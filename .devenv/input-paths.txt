@@ -1,0 +1,11 @@
+/home/mattw/.config/nixpkgs/overlays
+/home/mattw/.config/nixpkgs/overlays.nix
+/home/mattw/agents/workspaces/monorepo/docs/.devenv/bootstrap/bootstrapLib.nix
+/home/mattw/agents/workspaces/monorepo/docs/.devenv/bootstrap/default.nix
+/home/mattw/agents/workspaces/monorepo/docs/.devenv/bootstrap/resolve-lock.nix
+/home/mattw/agents/workspaces/monorepo/docs/.env
+/home/mattw/agents/workspaces/monorepo/docs/devenv.local.nix
+/home/mattw/agents/workspaces/monorepo/docs/devenv.lock
+/home/mattw/agents/workspaces/monorepo/docs/devenv.nix
+/home/mattw/agents/workspaces/monorepo/docs/devenv.yaml
+/run/user/1000/devenv-db0c1d5/processes/native-manager.pid
