@@ -1,5 +1,8 @@
 # Spawn limits: live-placement caps at the spawn handler
 
+Bare repository paths in this record refer to
+[RigelBuild/compass](https://github.com/RigelBuild/compass).
+
 ## Open Questions
 
 - **OQ-1: Owner only, or also per parent? Load-bearing.** A runaway subtree
