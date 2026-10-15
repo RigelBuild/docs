@@ -1,5 +1,8 @@
 # Elastic session runtime — amendment: the microVM production-readiness bar
 
+Bare repository paths in this record refer to
+[RigelBuild/compass](https://github.com/RigelBuild/compass).
+
 > **Design amendment.** Rules OQ-1 of
 > `docs/designs/infra/runtime/compass-runner-adoption-strategy/design.md`,
 > whose T1 consumes it.
