@@ -326,8 +326,9 @@ names, never values. The App private keys and the webhook secret are
 escapes as `dotenvForgeValue` (`go/e2e/fixture.go`) writes them. They are not
 set with `compass secret set`. Brokered git push needs only the primary App
 and the agent's repo grants: `brokeredSecretResolver.ResolveFor` adds the
-App token on the Runner's fetch, scoped to the repos that
-`compass agent repo add` granted. The reviewer App is optional. It enables
+App token on the Runner's fetch, scoped to the agent's effective grants
+(`ListForgeScopeRepos`): its own grants from `compass agent repo add` plus
+its owner's grants, including `--forge-scope-grants`. The reviewer App is optional. It enables
 only agent `ForgeCall` writes, which `wireForgeWriteCaller`
 (`go/server/serve.go`) wires only when both Apps are configured.
 
