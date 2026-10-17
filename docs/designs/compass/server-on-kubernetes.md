@@ -87,10 +87,15 @@ so roles created out of band do not help there.
 3. RDS or Aurora, with a schema change that drops the BYPASSRLS role. This
    is a Go and SQL record of its own.
 
-**Recommendation:** 1. It needs no code change. Whichever option is ruled,
-the owner login role needs CREATEROLE and BYPASSRLS (or superuser) and must
-own the target database, so it can create objects in `public`. T7 is gated
-on this ruling.
+**Recommendation:** 1. It needs no code change. T7 is gated on this ruling.
+The owner login role must own the target database, so it can create objects
+in `public`. Its other attributes depend on the option:
+
+- Options 1 and 2: CREATEROLE plus BYPASSRLS, or superuser, because
+  `0001_init.sql` creates and re-asserts the BYPASSRLS role.
+- Option 3: CREATEROLE only, for `compass_app` and the grant to the owner.
+  The schema change removes `compass_system`, so no role needs BYPASSRLS,
+  and the RDS master user qualifies.
 
 **OQ-6 (non-load-bearing) — Image lane reuse.**
 
@@ -191,8 +196,8 @@ there. EKS follows.
   `migrationLockKey`.
 - **RLS roles.** `0001_init.sql` creates `compass_app` (NOLOGIN) and
   `compass_system` (NOLOGIN BYPASSRLS), always re-asserts BYPASSRLS, and
-  grants both to the owner. The owner therefore needs CREATEROLE and
-  BYPASSRLS (OQ-5).
+  grants both to the owner. Under today's schema the owner therefore needs
+  CREATEROLE and BYPASSRLS (OQ-5).
 - **Door.** `loadNetworkTLS` (`go/server/network_door.go`) loads the keypair
   once, with a TLS 1.3 floor and h2. It has no reload. The Server serves no
   UI files. `ServeConfig.CORSAllowedOrigin` admits one browser origin.
@@ -283,8 +288,8 @@ Job.
   Secret, and it logs in with `scram-sha-256`. On the first migration that
   superuser creates the RLS roles. The StatefulSet is dev-only (OQ-9); the
   operator backs up its volume and the master key.
-- On EKS, the owner role must hold CREATEROLE and BYPASSRLS and own the
-  database (OQ-5). Operators turn compute suspend off. A suspended database
+- On EKS, the owner role must own the database and hold the attributes the
+  OQ-5 option requires. Operators turn compute suspend off. A suspended database
   fails the single ping, and the pod restarts until it answers.
 
 **Secrets (D4).** The renderer names Secrets but never holds a value.
@@ -319,8 +324,12 @@ renders it as `--forge-*` args: App ids, installation ids and secret
 names, never values. The App private keys and the webhook secret are
 `SERVER_<name>` lines in `server.env`, PEM values double-quoted with `\n`
 escapes as `dotenvForgeValue` (`go/e2e/fixture.go`) writes them. They are not
-set with `compass secret set`. Agent push also needs the reviewer App,
-because the forge-write path runs only when both Apps are configured.
+set with `compass secret set`. Brokered git push needs only the primary App
+and the agent's repo grants: `brokeredSecretResolver.ResolveFor` adds the
+App token on the Runner's fetch, scoped to the repos that
+`compass agent repo add` granted. The reviewer App is optional. It enables
+only agent `ForgeCall` writes, which `wireForgeWriteCaller`
+(`go/server/serve.go`) wires only when both Apps are configured.
 
 **NATS access (D5).** The stack's NATS has no auth because it listens only on
 loopback. In a cluster, a NetworkPolicy admits port 4222 only from the
@@ -509,11 +518,12 @@ Tests use golden output plus invariants:
 - A `runnerClusters` entry with `jwks` renders a ConfigMap key and a
   matching `jwksFile`; an entry with both `jwks` and `jwksURI` is rejected.
 - A `forge` value renders `--forge-host`, `--forge-app-id`,
-  `--forge-installation-id`, `--forge-app-key-secret`,
-  `--forge-app-webhook-secret`, `--forge-reviewer-app-id`,
+  `--forge-installation-id`, `--forge-app-key-secret` and
+  `--forge-app-webhook-secret`, plus `--forge-repos` when set. Ids must be
+  positive integers. An absent `forge` renders no `--forge-*` arg.
+- `forge.reviewer` renders `--forge-reviewer-app-id`,
   `--forge-reviewer-app-installation-id` and
-  `--forge-reviewer-app-key-secret`, plus `--forge-repos` when set. Ids
-  must be positive integers. An absent `forge` renders no `--forge-*` arg.
+  `--forge-reviewer-app-key-secret`. Without it, no reviewer arg renders.
 
 The README documents the render steps, the JWKS read, the
 `exit status 1` boot failure, and the `server.env` lines. It warns that
@@ -543,8 +553,9 @@ tools/server-manifests/render-core.ts
     host?: string; repos?: string[];   // repos: owner/name seed for --forge-repos
     appId: number; installationId: number;
     appKeySecret: string; appWebhookSecret: string;   // SERVER_<name> in server.env
-    reviewerAppId: number; reviewerInstallationId: number;
-    reviewerAppKeySecret: string;
+    reviewer?: {   // optional: enables agent ForgeCall writes only
+      appId: number; installationId: number; appKeySecret: string;
+    };
   }
   export function parseServerDeployValues(raw: unknown): ServerDeployValues
   export function renderServerManifests(v: ServerDeployValues): ReturnType<typeof renderRunnerManifests>
@@ -600,9 +611,11 @@ Certificates, Secrets and values:
 - One Certificate against the existing private-CA ClusterIssuer, with a long
   duration and the reload annotation on the Server Deployment.
 - The Secrets from D4. `server.env` holds `COMPASS_MASTER_KEY` and the
-  forge App keys and webhook secret as `SERVER_<name>` lines.
-- Server values: the k3s JWKS, the `forge` block (both Apps' ids and
-  secret names), and `initImage`.
+  primary App key and webhook secret as `SERVER_<name>` lines, plus the
+  reviewer App key when the reviewer is configured.
+- Server values: the k3s JWKS, the `forge` block (the primary App's ids
+  and secret names, and `reviewer` only if agents need `ForgeCall` writes),
+  and `initImage`.
 
 Flux inputs:
 
@@ -626,7 +639,10 @@ Acceptance:
 - `/healthz` returns 200.
 - `compass.runner` reports SERVING.
 - An out-of-cluster CLI session completes, and its agent reaches the
-  provider and pushes to the forge with a brokered App token.
+  provider and pushes to a granted repo with a brokered App token from the
+  primary App alone.
+- With `reviewer` set, an agent `ForgeCall` write succeeds; without it, the
+  Server boots and push still works.
 - Dev points at the cluster.
 - The bump job opens one change for a new compass commit, and fails on a
   closure change that has no publish.
@@ -637,15 +653,15 @@ Runner values: serverAddr https://compass-server.<ns>.svc, serverCA set,
   egressAllow [<provider API host>, github.com, api.github.com]
 Server values: runnerClusters[0] = { issuer: https://kubernetes.default.svc.cluster.local, jwks: <JWKS> },
   forge = { appId, installationId, appKeySecret, appWebhookSecret,
-            reviewerAppId, reviewerInstallationId, reviewerAppKeySecret }
+            reviewer?: { appId, installationId, appKeySecret } }
 ```
 
 ### T7 — EKS operator responsibilities
 
 Gated on Matt's OQ-5 ruling. The database contract is then: a direct,
-session-mode endpoint, compute suspend off, and an owner login role that
-holds CREATEROLE and BYPASSRLS (or superuser) and owns the target database.
-The operator checks those attributes before wiring the DSN. Then:
+session-mode endpoint, compute suspend off, and an owner login role that owns
+the target database and holds the attributes OQ-5 lists for the ruled
+option. The operator checks those attributes before wiring the DSN. Then:
 
 - A passthrough NLB.
 - The cluster's public issuer with `jwksURI` discovery.
