@@ -1,5 +1,7 @@
 # Design: traceparent on every Go outbound hop (RIG-5321)
 
+Errata: E1 (2026-10-17) — see §Errata
+
 Child record of the trace-logs record
 ([`compass-go-trace-logs/design.md`](https://github.com/RigelBuild/compass/blob/main/docs/designs/observability/compass-go-trace-logs/design.md)),
 called the parent here. The parent puts a span on every inbound server and
@@ -779,3 +781,11 @@ Stack order: H1, H2, H3, H4, H5, H6, H7, H8, on the parent's T9.
     2026-10-15). H8 adds `traceparent` to `PublishEventsRequest`, so a
     presence edge caused by a traced command, such as a failed Reload, keeps
     that trace. Rejected: (a) leave runner frames untraced.
+
+## Errata
+
+### E1 — 2026-10-17 (RIG-5508)
+
+Wrong: "`microvm.GuestClient` gains a variadic `opts ...connect.ClientOption`," and the other `ClientOption` and `WithoutTraceEvents()` names in H1.
+
+connect-go v2 removed `ClientOption`; `connect.NewClient` takes `...connect.ClientInterceptor`. H1 uses `interceptors ...connect.ClientInterceptor`, `GuestClientInterceptors []connect.ClientInterceptor`, and `selectEngine(guestInterceptors ...connect.ClientInterceptor)`. compass-runner builds `otelconnect.NewClientInterceptor()`. otelconnect v0.12.0 has no `WithoutTraceEvents` and adds no per-message span events, so `ExecStream` still adds none. The behavior and acceptance are unchanged.
