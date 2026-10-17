@@ -37,8 +37,12 @@ mounted Secret file. `SpecResolver.buildManifest`
 (`COMPASS_MASTER_KEY`, `SERVER_<name>`). The flake check
 `tools/flake-gate/compass-server-secretspec.nix` and the e2e fixture
 (`go/e2e/fixture.go`) already boot through `dotenv://`. Unlike `env://`, the
-file keeps the master key out of the Server's process env, and secretspec
-re-reads it on each resolve, so a rotated Secret needs no restart.
+file keeps the master key out of the Server's process env. secretspec
+re-reads the file on each resolve, so rotated `SERVER_*` values apply without
+a restart. `COMPASS_MASTER_KEY` is the exception: `resolveMasterKey`
+(`go/server/serve.go`) reads it once at boot, and `reconcileKeyState` fails
+boot when it differs from the stored key. It must never change in the
+mounted Secret.
 
 **OQ-3 (closed) — LLM gateway placement.** Phase one deploys no gateway.
 Only `compass-stack` refuses to start without one (`go/internal/stack/stack.go`:
@@ -83,8 +87,10 @@ so roles created out of band do not help there.
 3. RDS or Aurora, with a schema change that drops the BYPASSRLS role. This
    is a Go and SQL record of its own.
 
-**Recommendation:** 1. It needs no code change. T7 confirms the owner role's
-attributes before it wires the DSN.
+**Recommendation:** 1. It needs no code change. Whichever option is ruled,
+the owner login role needs CREATEROLE and BYPASSRLS (or superuser) and must
+own the target database, so it can create objects in `public`. T7 is gated
+on this ruling.
 
 **OQ-6 (non-load-bearing) — Image lane reuse.**
 
@@ -139,8 +145,8 @@ upgrade path and no point-in-time recovery.
 D8 pins both digests to one compass commit.
 
 1. Re-render by hand on each bump.
-2. A scheduled job in the operator's infra repo resolves both digests at one
-   compass commit, re-renders, and opens a pull request.
+2. The operator's scheduled job resolves both digests at one compass commit,
+   re-renders, and opens a change for review.
 3. Flux image automation. It bumps each image alone, which breaks the
    one-commit pairing.
 
@@ -248,11 +254,15 @@ its own pod. The Server container supervises nothing.
 | Postgres | dev-only StatefulSet, PVC, `DefaultPostgresImage` (OQ-9) | external managed Postgres (OQ-5) |
 | OTel collector | none: `OTEL_EXPORTER_OTLP_ENDPOINT` points at the operator's collector | same |
 | LLM gateway | not deployed in phase one (OQ-3) | same |
-| compass-runner | the existing DaemonSet, on one KVM node | same, on bare-metal nodes |
+| compass-runner | the existing DaemonSet, on exactly one KVM node | same: one bare-metal node |
 
 The Server runs one replica because the hub holds one Runner and the
 delivery-cutover record keeps a single Server. `Recreate` also keeps two
 Servers from migrating at once. Each rollout drops live sessions (OQ-8).
+Each cluster runs exactly one Runner pod per Server: `Hub.enroll`
+(`go/internal/runnerhub/hub.go`) replaces the attached Runner and clears its
+session bindings, so a second Runner would drop the first one's sessions.
+Multi-Runner is a separate record.
 
 **Server image (D2).** `ghcr.io/rigelbuild/compass-server` follows the Runner
 image's shape. `server-image/Dockerfile` uses the same pinned base and copies
@@ -273,9 +283,9 @@ Job.
   Secret, and it logs in with `scram-sha-256`. On the first migration that
   superuser creates the RLS roles. The StatefulSet is dev-only (OQ-9); the
   operator backs up its volume and the master key.
-- On EKS, the owner role must hold CREATEROLE and BYPASSRLS (OQ-5).
-  Operators turn compute suspend off. A suspended database fails the single
-  ping, and the pod restarts until it answers.
+- On EKS, the owner role must hold CREATEROLE and BYPASSRLS and own the
+  database (OQ-5). Operators turn compute suspend off. A suspended database
+  fails the single ping, and the pod restarts until it answers.
 
 **Secrets (D4).** The renderer names Secrets but never holds a value.
 
@@ -284,19 +294,33 @@ Job.
 - Server secrets come from one Secret key, `server.env`, mounted read-only
   at `/etc/compass/secrets/`. The Server reads it through
   `--secret-provider dotenv:///etc/compass/secrets/server.env` (OQ-2). The
-  file holds `COMPASS_MASTER_KEY` and the forge `SERVER_*` names. A wrong path
+  file holds `COMPASS_MASTER_KEY` and the `SERVER_<name>` values. A wrong path
   or a bad file fails boot with only `exit status 1`, because secretspec's
   stderr is discarded; the README says to check the mount first.
+- `SERVER_*` values re-resolve on use. `COMPASS_MASTER_KEY` is read once at
+  boot and must never change: a different key fails boot in
+  `reconcileKeyState`.
 - `XDG_STATE_HOME` is `/run/compass/xdg-state`, on the emptyDir, so
   secretspec's audit log has a writable home on a read-only root.
 - An init container copies the admin token into a `0600` file (OQ-1).
-- The operator's infra repo creates every Secret with its own tooling. It
-  also backs up the master key, because losing it is unrecoverable
-  (`docs/self-host.md`).
+- The operator creates every Secret with its own tooling. It also backs up
+  the master key, because losing it is unrecoverable (`docs/self-host.md`).
 - Agent provider keys are not Server secrets. An admin stores each one with
   `compass secret set <NAME> --kind provider --provider <id> --delivery file`,
   value on stdin. `--delivery file` matters: `Install` routes env delivery
   before kind, so an env-delivered key never reaches the provider seed.
+
+**Forge credential (D4).** Agents get forge tokens only from the Server's
+App broker. `buildGitCredentialBroker` (`go/server/git_credential.go`)
+returns nil unless the primary App id is set, and user `GH_TOKEN`-style
+secrets are rejected and stripped (`IsReservedGitHubEnvName`,
+`go/internal/secrets/secrets.go`). So the renderer takes a `forge` value and
+renders it as `--forge-*` args: App ids, installation ids and secret
+names, never values. The App private keys and the webhook secret are
+`SERVER_<name>` lines in `server.env`, PEM values double-quoted with `\n`
+escapes as `dotenvForgeValue` (`go/e2e/fixture.go`) writes them. They are not
+set with `compass secret set`. Agent push also needs the reviewer App,
+because the forge-write path runs only when both Apps are configured.
 
 **NATS access (D5).** The stack's NATS has no auth because it listens only on
 loopback. In a cluster, a NetworkPolicy admits port 4222 only from the
@@ -333,7 +357,7 @@ stream needs h2 end to end.
 **In-cluster Runner (D7).** Three values make a rendered Runner useful.
 
 - **Identity.** The k3s entry keeps the cluster's default issuer and uses
-  `jwksFile`. The operator's infra repo reads the public keys with
+  `jwksFile`. The operator reads the public keys with
   `kubectl get --raw /openid/v1/jwks` at render time, and the Server renderer
   writes them into the runner-clusters ConfigMap. This needs no Go change and
   no anonymous discovery. A k3s signing-key rotation is a manual operator
@@ -349,13 +373,15 @@ stream needs h2 end to end.
 
 **Delivery split (D8).** Public compass holds `tools/server-manifests/`, in
 the shape of `tools/runner-manifests/`: values in, plain objects out,
-digest-only images, no Secrets. The operator's infra repo holds the values
-for each cluster. It renders at a pinned compass commit and commits the
-output, and Flux applies it. It also owns Secrets, the Certificate, the
-device plugin and node setup. Both image digests resolve from one compass
-commit: each is that image's newest publish at or before the commit, so the
-Server and Runner API versions match. A scheduled job in the operator's
-infra repo moves the pin (OQ-10).
+digest-only images, no Secrets. The operator holds the values for each
+cluster, renders at a pinned compass commit, commits the output, and has
+Flux apply it. The operator also owns Secrets, the Certificate, the device
+plugin and node config. Both image digests resolve from one compass commit:
+each is that image's newest publish at or before the commit. That pairing
+matches the Server and Runner API versions only while both closure sets
+cover every Go input, `go/gen` included; T3 owns that guarantee. The
+operator's scheduled job moves the pin (OQ-10), and it fails when a lane has
+no publish for a closure change.
 
 **Rollout (D9).** k3s comes first, as the dev environment. It is done when
 three things hold:
@@ -394,8 +420,9 @@ out of scope; see `docs/concepts/self-host-and-managed.md` and the
 - **Public repo.** No operator names, hosts, zones or private-product
   detail. See `docs/concepts/self-host-and-managed.md`.
 - **PRs.** T3, T4 and T5 are independent PRs off compass `main`; none
-  stacks on another. Each passes alone, red then green. T6 and T7 live in the
-  operator's infra repo.
+  stacks on another. Each passes alone, red then green. T6 and T7 are
+  operator responsibilities: values, Secrets, the Certificate, node config
+  and Flux inputs.
 - **Images.** Digest only. Renderers reject tags, as
   `assertRunnerImageDigest` does. The init image is a value, digest-pinned
   and checked the same way.
@@ -417,9 +444,9 @@ out of scope; see `docs/concepts/self-host-and-managed.md` and the
 ### Order
 
 ```text
-T3 server image ──┐
-T4 server renderer ┼──► T6 k3s wiring + bump job ──► T7 EKS values
-T5 runner values ──┘
+#2357 runner closure ──► T3 server image ──┐
+T4 server renderer ────────────────────────┼──► T6 k3s operator ──► T7 EKS operator
+T5 runner values ──────────────────────────┘                        (gated on OQ-5)
 Deferred, off the critical path: F1 door TLS reload, F2 tokenFile
 ```
 
@@ -445,6 +472,12 @@ In flight as compass PR #2355. Its smoke runs the locally built OCI image:
 `go/internal` and `go/server`, and the secretspec pin comes from
 `devenv.lock`. `go/**` is a superset; a Runner-only Go change then publishes
 a Server image too, which is the safe direction.
+
+T3 owns D8's version-pairing guarantee. It depends on compass PR #2357,
+which widens `RUNNER_IMAGE_CLOSURE_PATHS` to `go/**`; without it a
+`go/gen`-only change publishes a new Server and no new Runner. T3 adds a
+`bun:test` that feeds `go/gen/compass/v1/compass.pb.go` to `closureChanges`
+for both lanes and expects a hit in each.
 
 ```text
 server-image/{Dockerfile,moon.yml,.dockerignore}   // pinned base from runner-image/Dockerfile
@@ -475,9 +508,17 @@ Tests use golden output plus invariants:
   is not the emptyDir root.
 - A `runnerClusters` entry with `jwks` renders a ConfigMap key and a
   matching `jwksFile`; an entry with both `jwks` and `jwksURI` is rejected.
+- A `forge` value renders `--forge-host`, `--forge-app-id`,
+  `--forge-installation-id`, `--forge-app-key-secret`,
+  `--forge-app-webhook-secret`, `--forge-reviewer-app-id`,
+  `--forge-reviewer-app-installation-id` and
+  `--forge-reviewer-app-key-secret`, plus `--forge-repos` when set. Ids
+  must be positive integers. An absent `forge` renders no `--forge-*` arg.
 
-The README documents the render steps, the JWKS read, and the
-`exit status 1` boot failure.
+The README documents the render steps, the JWKS read, the
+`exit status 1` boot failure, and the `server.env` lines. It warns that
+`COMPASS_MASTER_KEY` must never change in the mounted Secret: the Server
+reads it once at boot, and a different key fails boot.
 
 ```text
 tools/server-manifests/render-core.ts
@@ -495,7 +536,15 @@ tools/server-manifests/render-core.ts
     adminTokenSecretName: string; s3SecretName?: string;
     corsAllowedOrigin?: string; otlpEndpoint?: string;
     external?: { port: number; loadBalancerClass?: string };
+    forge?: ForgeValues;
     runnerClusters: RunnerClusterValues[];
+  }
+  export type ForgeValues = {
+    host?: string; repos?: string[];   // repos: owner/name seed for --forge-repos
+    appId: number; installationId: number;
+    appKeySecret: string; appWebhookSecret: string;   // SERVER_<name> in server.env
+    reviewerAppId: number; reviewerInstallationId: number;
+    reviewerAppKeySecret: string;
   }
   export function parseServerDeployValues(raw: unknown): ServerDeployValues
   export function renderServerManifests(v: ServerDeployValues): ReturnType<typeof renderRunnerManifests>
@@ -511,6 +560,7 @@ tools/server-manifests/render-core.ts
   //   --admin-token-file /run/compass/bootstrap/admin-token
   //   --runner-clusters /etc/compass/runner-clusters/clusters.yaml
   //   --secret-provider dotenv:///etc/compass/secrets/server.env
+  //   [--forge-* from forge; secret NAMEs only, never values]
   // env: XDG_STATE_HOME=/run/compass/xdg-state
 tools/server-manifests/{render.ts,values.example.json,README.md,moon.yml}
 .moon/workspace.yml                  // server-manifests
@@ -534,32 +584,41 @@ tools/runner-manifests/render-core.ts
   export function assertEgressHost(host: string): void
 ```
 
-### T6 — k3s wiring in the operator's infra repo (operator infra)
+### T6 — k3s operator responsibilities
 
-Node, declared in the host's config as code:
+Node config, declared as code:
 
 - Promote the spike's generic device-plugin slice to its permanent place.
 - The `/dev/kvm` `0666` udev rule.
 - The seccomp profile staged at the kubelet root.
 - Confirm Kubernetes ≥1.33. No issuer change and no AppArmor sysctl: the
   KVM node has no AppArmor.
+- Exactly one KVM node carries the Runner (D1).
 
-Cluster:
+Certificates, Secrets and values:
 
 - One Certificate against the existing private-CA ClusterIssuer, with a long
   duration and the reload annotation on the Server Deployment.
-- The Secrets from D4, including `server.env`.
-- The k3s JWKS read into the values.
+- The Secrets from D4. `server.env` holds `COMPASS_MASTER_KEY` and the
+  forge App keys and webhook secret as `SERVER_<name>` lines.
+- Server values: the k3s JWKS, the `forge` block (both Apps' ids and
+  secret names), and `initImage`.
+
+Flux inputs:
+
 - Rendered output is committed. Flux Kustomizations apply data, then
   Server, then Runners.
 - A scheduled bump job (OQ-10). For one compass commit it resolves each
   lane's digest with `resolveAncestor` from
-  `tools/runner-image/retag-core.ts`, re-renders both, and opens a pull
-  request.
+  `tools/runner-image/retag-core.ts`. It runs `assertNoClosureChange` per lane
+  against that lane's closure set, so a lane with no publish for a closure
+  change fails the job instead of pairing a stale image. It then re-renders
+  both and opens a change for review.
 
-Dev move (OQ-11): a fresh install. The admin re-enters forge and provider
-secrets with `compass secret set`, provider keys with `--kind provider
---delivery file`, and pushes agent configs again.
+Dev move (OQ-11): a fresh install. The admin re-enters provider keys with
+`compass secret set --kind provider --delivery file`, grants each agent its
+repos with `compass agent repo add <agent> <owner/name>`, and pushes agent
+configs again.
 
 Acceptance:
 
@@ -567,27 +626,32 @@ Acceptance:
 - `/healthz` returns 200.
 - `compass.runner` reports SERVING.
 - An out-of-cluster CLI session completes, and its agent reaches the
-  provider and pushes to the forge.
+  provider and pushes to the forge with a brokered App token.
 - Dev points at the cluster.
-- The bump job opens one pull request for a new compass commit.
+- The bump job opens one change for a new compass commit, and fails on a
+  closure change that has no publish.
 
 ```text
 inputs: tools/server-manifests + tools/runner-manifests at one compass commit
 Runner values: serverAddr https://compass-server.<ns>.svc, serverCA set,
   egressAllow [<provider API host>, github.com, api.github.com]
-Server values: runnerClusters[0] = { issuer: https://kubernetes.default.svc.cluster.local, jwks: <JWKS> }
+Server values: runnerClusters[0] = { issuer: https://kubernetes.default.svc.cluster.local, jwks: <JWKS> },
+  forge = { appId, installationId, appKeySecret, appWebhookSecret,
+            reviewerAppId, reviewerInstallationId, reviewerAppKeySecret }
 ```
 
-### T7 — EKS values (operator infra)
+### T7 — EKS operator responsibilities
 
-First confirm OQ-5's owner-role attributes. Then wire:
+Gated on Matt's OQ-5 ruling. The database contract is then: a direct,
+session-mode endpoint, compute suspend off, and an owner login role that
+holds CREATEROLE and BYPASSRLS (or superuser) and owns the target database.
+The operator checks those attributes before wiring the DSN. Then:
 
-- The external Postgres direct endpoint, with compute suspend off.
 - A passthrough NLB.
 - The cluster's public issuer with `jwksURI` discovery.
-- A bare-metal node group that exposes `/dev/kvm`, sized for the Runner's
-  `sessionCapacity`. Every Runner pod requests one `kvmResourceName` device.
-- For each new meter (managed Postgres, the NLB, bare-metal nodes): an
+- A bare-metal node group of exactly one node that exposes `/dev/kvm`, for
+  one Runner pod (D1). Size the instance by the Runner's `sessionCapacity`.
+- For each new meter (managed Postgres, the NLB, the bare-metal node): an
   enforced cap at each layer, a budget alert that pages, and a spend-cap
   register row, in the same change.
 
@@ -619,8 +683,8 @@ go/internal/auth/workload_identity.go
 
 ## Tasks
 
-- [ ] T3 — Server image and publish lane (CI, nix), compass PR #2355
-- [ ] T4 — `tools/server-manifests` renderer (TypeScript)
+- [ ] T3 — Server image and publish lane (CI, nix), compass PR #2355, after #2357
+- [ ] T4 — `tools/server-manifests` renderer with `forge` args (TypeScript)
 - [ ] T5 — Runner renderer `serverCA` and `egressAllow` (TypeScript)
-- [ ] T6 — k3s wiring, bump job and dev move (operator's infra repo)
-- [ ] T7 — EKS values, bare-metal nodes and spend caps (operator's infra repo)
+- [ ] T6 — k3s operator: node config, Secrets, values, Flux inputs, bump job, dev move
+- [ ] T7 — EKS operator, gated on OQ-5: database, one bare-metal node, spend caps
