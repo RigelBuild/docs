@@ -3,11 +3,11 @@
 Tracking: RIG-3093
 
 > **Design record.** Paths cite `RigelBuild/compass` at `origin/main` as of
-> 2026-10-11. Decision: [DL-478](decisions/infra/DL-478.md) (pending
+> 2026-10-11. Decision: [DL-478](../../../decisions/infra/DL-478.md) (pending
 > Matt). On the microVM tier it amends
-> [DL-080](https://github.com/RigelBuild/compass/blob/main/docs/designs/decisions/agent/DL-080.md) (read-only bind mount) and
-> [DL-081](https://github.com/RigelBuild/compass/blob/main/docs/designs/decisions/agent/DL-081.md) (re-materialize + Reload). It
-> closes [microvm-v4-gateway-over-vsock.md](https://github.com/RigelBuild/compass/blob/main/docs/designs/infra/runtime/compass-elastic-session-runtime/microvm-v4-gateway-over-vsock.md)
+> [DL-080](../../../decisions/agent/DL-080.md) (read-only bind mount) and
+> [DL-081](../../../decisions/agent/DL-081.md) (re-materialize + Reload). It
+> closes [microvm-v4-gateway-over-vsock.md](microvm-v4-gateway-over-vsock.md)
 > §(f) and OQ-3.
 
 ## Problem / Intent
