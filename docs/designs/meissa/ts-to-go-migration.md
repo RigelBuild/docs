@@ -2,109 +2,30 @@
 
 Linear: RIG-5901. Matt's ruling B (2026-10-19): every non-frontend TypeScript
 surface ports to Go now, not on touch. Ruling of 2026-11-01: Compass is archived
-and tabit is deleted, so neither is a consumer this record waits on.
+and tabit is deleted, so neither is a consumer this record waits on. Matt ruled
+all eight open questions as recommended on 2026-11-02 (§ Resolved decisions).
 
 Ledger-impact: [DL-647](decisions/go/DL-647.md) records the module contract:
 module path, tag scheme, the two public packages and the `tools` binaries.
 
 <!-- LENGTH §Plan: about 5,500 prose words; the Plan holds most of them as per-task Interfaces, parity rules and quoted TS evidence that cheap executors read instead of re-reading the TypeScript sources -->
 
-## Open Questions
+## Resolved decisions
 
-Matt rules on the RIG-5901 human-action issue. The plan follows each
-**Recommendation**. No question depends on another. Citations name a symbol and
-a repository-relative path; meissa paths are at main `2b92002a544e`.
+Matt ruled every question as recommended on the RIG-5901 decision issue
+(2026-11-02). Citations name a symbol and a repository-relative path; meissa
+paths are at main `2b92002a544e`.
 
-1. **TSX and JSX parser for `commentscan`.** `scanJsx` in
-   `packages/comment-scan/jsx.ts` parses with the `typescript` compiler and
-   fails closed on any parse diagnostic: "`if ((source.parseDiagnostics ??
-   []).length > 0) { return { residues: text.split("\n"), ambiguous: true };`".
-   The file header says why a char scanner is not enough: "in `<a>x//y</a>`
-   the `//` is JSX text". The TypeScript Go port keeps its parser at
-   `internal/parser/parser.go` in module `github.com/microsoft/typescript-go`
-   (its `go.mod`: "`module github.com/microsoft/typescript-go`"). Go forbids
-   importing an `internal/` package from outside its module.
-   - A: `github.com/odvcencio/gotreesitter` (pure Go, MIT). Import only its
-     standalone package `grammars/tsx`. Its `(*Node).HasErrorOrMissing` in
-     `tree.go` "reports whether this node or a descendant contains an ERROR or
-     MISSING node. Use it for strict parse-health checks." A tree where it is
-     true sets `Ambiguous`, so a broken file fails closed as in `scanJsx`.
-   - B: a hand-written TSX comment scanner. No dependency, but it must solve
-     the JSX-text case above by hand.
-   - C: keep a TS sidecar. This keeps Bun in every consumer.
-   - **Recommendation:** A, with the corpus and broken-input checks in M2.
-2. **JavaScript regex engine for `ref-gate`.** `findViolations` in
-   `packages/ref-gate/index.ts` compiles each configured pattern as a
-   JavaScript regex: "`({ source, flags }) => new RegExp(source, flags)`". The
-   `patterns[0].source` in RigelBuild/docs `ref-gate.config.json` ends in a
-   nested negative lookahead, "`(?!-ref-gate(?![\\w-]))`", which RE2 cannot
-   compile. (Only this fragment is quoted; the full pattern would trip the gate.)
-   - A: `github.com/dlclark/regexp2/v2` with the `ECMAScript` option (plus
-     `Unicode` for the `u` flag). Its README maps that option to "The
-     ECMAScript specification, including the distinction between legacy
-     case-insensitive matching (`/i`) and Unicode case-insensitive matching
-     (`/iu`)". Internal patterns still use stdlib `regexp`.
-   - B: RE2 only, and rewrite every consumer config. This breaks configs
-     silently at the next bump.
-   - **Recommendation:** A. A 2-second `MatchTimeout` and the backtracking
-     stack limit both end in exit 2 with a named message, never a hang.
-3. **Go toolchain and `go` directive.** In meissa's pinned nixpkgs,
-   `nix eval --inputs-from . nixpkgs#go.version` prints `1.26.10` and
-   `nixpkgs#go_1_27.version` prints `1.27.3`. The house rule is the pinned
-   toolchain minus at most one minor.
-   - A: build with `go_1_27` (`buildGo127Module`), directive `go 1.26.0`.
-     Importers on 1.26 and 1.27 both work.
-   - B: build with default `go`, directive `go 1.26.0`. This builds with an
-     older toolchain than the Go 1.27 that the house rule pins.
-   - **Recommendation:** A.
-4. **A `comment-scan` binary.** `packages/comment-scan/package.json` declares
-   `"exports": "./index.ts"` and no `bin`, so every consumer imports it as a
-   library.
-   - A: library only. M2 makes the tagged `commentscan` package available, and
-     the flake `tools` package ships no `comment-scan` binary.
-   - B: also ship a `comment-scan` CLI. This invents a CLI contract that no
-     consumer asked for.
-   - **Recommendation:** A.
-5. **`renovate-preflight`.** No consuming repository in RIG-5901 scope runs
-   this package, and meissa itself does not run it: neither
-   `.github/workflows/renovate.yml` nor the root `moon.yml` names it.
-   - A: delete it without a port (M12), and deprecate it on npm in M16.
-   - B: port it to Go and ship it in `tools`.
-   - **Recommendation:** A.
-6. **npm deprecation timing and auth.** npm's trusted-publishers page lists the
-   allowed actions: "`npm stage publish` is always allowed. Choose whether this
-   trusted publisher can also publish directly with `npm publish` or manage
-   dist-tags with `npm dist-tag`." `npm deprecate` is not one of them.
-   - A: deprecate each retired package when its rows on the M16 checklist are
-     done. Nemo runs one owner action with a short-lived granular token.
-   - B: add a CI job with a long-lived granular npm token.
-   - C: never deprecate.
-   - **Recommendation:** A. No new standing secret.
-7. **RigelBuild/docs scope.** RIG-5901 names three repositories; RigelBuild/docs
-   is not one. Its `package.json` scripts call the meissa CLIs (`"gate":
-   "design-ledger-gate --config design-ledger.config.json"`), and
-   `site/scripts/gather.ts` imports `parseDecisionFile` and
-   `renderDecisionIndex` from `@rigelbuild/design-ledger-gate/decision-files.ts`.
-   - A: M15 swaps the three CLIs to `tools` and ports the TS files that import
-     retiring packages: `site/scripts/gather.ts` (onto `ledger`), its test, and
-     `site/scripts/ref-gate-config.test.ts`. `deploy.ts` stays TS for now.
-   - B: M15 also ports `deploy.ts`.
-   - C: docs stays on the last npm versions. This blocks deprecation.
-   - **Recommendation:** A. `site/scripts/deploy.ts` has one import,
-     `import { $ } from "bun";`, so no meissa dependency. The site keeps Bun
-     for the Astro build and `wrangler` anyway.
-8. **Markdown parser for `length-gate`.** `parseMarkdown` in
-   `packages/length-gate/core.ts` builds an mdast tree with
-   "`extensions: [gfm(), frontmatter(["yaml"])]`". goldmark's
-   `extension/gfm.go` enables only four extensions: "`Linkify.Extend(m)`,
-   `Table.Extend(m)`, `Strikethrough.Extend(m)`, `TaskList.Extend(m)`" in
-   `(*gfm).Extend`. So footnotes need `extension.Footnote` on top.
-   - A: `github.com/yuin/goldmark` with its GFM extension, `extension.Footnote`,
-     and `go.abhg.dev/goldmark/frontmatter` limited to YAML. The M10 node map
-     fixes each known structural difference up front.
-   - B: hand-port the micromark subset the gate needs.
-   - **Recommendation:** A. A golden mismatch blocks M10; it is fixed in the
-     word walker, not by changing the golden.
+| Question | Decision | Where |
+| --- | --- | --- |
+| 1 TSX and JSX parser for `commentscan` | **A.** `github.com/odvcencio/gotreesitter`, standalone `grammars/tsx` only. A tree where `(*Node).HasErrorOrMissing` is true sets `Ambiguous`, so a broken file fails closed as `scanJsx` does today. | M1b, M2 |
+| 2 JavaScript regex engine for `ref-gate` | **A.** `github.com/dlclark/regexp2/v2` with `ECMAScript` (plus `Unicode` for `u`). Consumer configs use nested lookaheads RE2 cannot compile. A 2-second `MatchTimeout` and the backtracking stack limit end in exit 2 with a named message. Internal patterns use stdlib `regexp`. | M3 |
+| 3 Go toolchain and `go` directive | **A.** Build with `go_1_27` (`buildGo127Module`, 1.27.3 in the pinned nixpkgs), directive `go 1.26.0`, so importers on 1.26 and 1.27 both work. | M1a |
+| 4 A `comment-scan` binary | **A.** Library only. `packages/comment-scan/package.json` has no `bin`; `tools` ships no `comment-scan` binary. | M2, M3 |
+| 5 `renovate-preflight` | **A.** Delete without a port. Nothing in scope runs it. | M12, M16 |
+| 6 npm deprecation timing and auth | **A.** Deprecate each retired package once its M16 rows are done. Nemo runs one owner action with a short-lived granular token; trusted publishing cannot run `npm deprecate`. No standing secret. | M16 |
+| 7 RigelBuild/docs scope | **A.** M15 swaps the three CLIs to `tools` and ports `site/scripts/gather.ts` (onto `ledger`), its test and `site/scripts/ref-gate-config.test.ts`. `deploy.ts` stays TS; its only import is `bun`. | M15 |
+| 8 Markdown parser for `length-gate` | **A.** `github.com/yuin/goldmark` with GFM, `extension.Footnote` (GFM in goldmark omits footnotes) and `go.abhg.dev/goldmark/frontmatter` limited to YAML. A golden mismatch blocks M10 and is fixed in the word walker, never by changing the golden. | M10 |
 
 ## Problem / Intent
 
@@ -163,7 +84,7 @@ packages then retire.
 | root `*.test.ts` | `go/internal/repochecks` | tests only |
 | none (shared JS semantics) | `go/internal/jstext` | internal helper |
 | `diff` npm package (jsdiff) | `go/internal/linediff` | internal helper |
-| `packages/renovate-preflight` | none | deleted (Open Question 5) |
+| `packages/renovate-preflight` | none | deleted (decision 5) |
 
 ### Inventory
 
@@ -242,7 +163,7 @@ child processes.
 ### Global Constraints
 
 - **Module:** `github.com/RigelBuild/meissa/go` in `go/`. Directive `go 1.26.0`;
-  build toolchain `go_1_27` (Open Question 3).
+  build toolchain `go_1_27` (decision 3).
 - **Build env:** `GOTOOLCHAIN=local`, `GOWORK=off`, `GOFLAGS=-mod=readonly`.
   Release binaries use `CGO_ENABLED=0`. Tests run `CGO_ENABLED=1 go test -race
   ./...`.
@@ -1006,7 +927,7 @@ Port the document half of `core.ts`: `proseWords`, `docMarker`,
 `formatFinding`. Port the `doc ratchet` describe block and the rest of
 `line pairing and failure output`. Capture TS goldens for `proseWords` (with
 and without errata) and `docMarker` over the meissa `.md` files and the docs
-input set (Open Question 8).
+input set (decision 8).
 
 Word count: `proseWords` in `packages/length-gate/core.ts` strips one BOM
 ("`markdown.replace(/^\uFEFF/u, "")`"), joins the prose blocks with `\n`, then
@@ -1115,9 +1036,7 @@ deepening stops once head shares history with base, as in `createGitDeps`.
 ### M12: retire `renovate-preflight`
 
 Delete `packages/renovate-preflight`, its release-please entries and its
-`package-bins.test.ts` row (Open Question 5). If Matt picks B, this task
-instead ports it to `go/internal/renovatepreflight` with `Classify(probe
-ProbeResult) Result` and adds `cmd/renovate-preflight` to `tools`.
+`package-bins.test.ts` row (decision 5).
 
 ### M13: root checks in Go
 
@@ -1172,7 +1091,7 @@ func Main(ctx context.Context, args []string, env func(string) string, stdout, s
 ### M15: RigelBuild/docs cutover
 
 Starts after M3, M5, M7 and M8; docs uses no `length-gate`. In RigelBuild/docs
-(Open Question 7):
+(decision 7):
 
 - Bump the `meissa` flake input to a revision that includes M8. Add
   `tools = meissa.packages.${system}.tools` and
@@ -1209,7 +1128,7 @@ package is done, Nemo runs
 `npm deprecate @rigelbuild/<pkg> "Moved to Go: github.com/RigelBuild/meissa/go and the meissa flake tools package"`
 for it. The packages are `comment-scan`, `design-ledger-gate`, `dl-claim`,
 `dl-list`, `dl-reconcile`, `length-gate`, `ref-gate` and `renovate-preflight`.
-File it as a human-action issue with the exact list (Open Question 6). Update
+File it as a human-action issue with the exact list (decision 6). Update
 the meissa `README.md` install section to the flake `tools` package and
 `go get`.
 
