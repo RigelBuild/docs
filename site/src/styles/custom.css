@@ -15,10 +15,10 @@
 	--sl-color-bg-nav: #f8f6ef; /* --s-content */
 	--sl-color-bg-sidebar: #fcfbf7; /* --s-raised */
 	--sl-color-bg-inline-code: #fcfbf7; /* --s-raised */
-	--sl-color-bg-accent: #fcfbf7; /* --s-raised */
+	--sl-color-bg-accent: #43436c; /* --accent */
 	--sl-color-text: #2b2b4c; /* --t-strong */
 	--sl-color-text-accent: #394f7d; /* --accent-text */
-	--sl-color-text-invert: #fcfbf7; /* --s-raised */
+	--sl-color-text-invert: #f8f6ef; /* --accent-on */
 	--sl-color-hairline: #d3cdb9; /* --b-hairline */
 	--sl-color-hairline-light: #d3cdb9; /* --b-hairline */
 	--sl-color-hairline-shade: #86806f; /* --b-control */
@@ -29,8 +29,8 @@
 	--sl-color-gray-1: #2b2b4c; /* --t-strong */
 	--sl-color-gray-2: #545464; /* --t-secondary */
 	--sl-color-gray-3: #615f57; /* --t-muted */
-	--sl-color-gray-4: #d3cdb9; /* --b-hairline */
-	--sl-color-gray-5: #fcfbf7; /* --s-raised */
+	--sl-color-gray-4: #86806f; /* --b-control */
+	--sl-color-gray-5: #d3cdb9; /* --b-hairline */
 	--sl-color-gray-6: #f8f6ef; /* --s-content */
 	--sl-color-black: #fcfbf7; /* --s-raised */
 }
