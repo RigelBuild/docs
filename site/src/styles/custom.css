@@ -1,0 +1,84 @@
+/* Light kit values keep Starlight on the same palette as the shared UI. */
+:root {
+	--sl-font: "Geist Sans", system-ui, sans-serif;
+	--sl-font-mono: "Geist Mono", ui-monospace, monospace;
+	--sl-line-height: 1.65;
+	--sl-line-height-headings: 1.2;
+}
+
+/* Starlight reads these copies directly; the kit is not part of its CSS build. */
+:root,
+:root[data-theme="dark"],
+:root[data-theme="light"] {
+	color-scheme: light;
+	--sl-color-bg: #f8f6ef; /* --s-content */
+	--sl-color-bg-nav: #f8f6ef; /* --s-content */
+	--sl-color-bg-sidebar: #fcfbf7; /* --s-raised */
+	--sl-color-bg-inline-code: #fcfbf7; /* --s-raised */
+	--sl-color-bg-accent: #fcfbf7; /* --s-raised */
+	--sl-color-text: #2b2b4c; /* --t-strong */
+	--sl-color-text-accent: #394f7d; /* --accent-text */
+	--sl-color-text-invert: #fcfbf7; /* --s-raised */
+	--sl-color-hairline: #d3cdb9; /* --b-hairline */
+	--sl-color-hairline-light: #d3cdb9; /* --b-hairline */
+	--sl-color-hairline-shade: #86806f; /* --b-control */
+	--sl-color-accent: #394f7d; /* --accent-text */
+	--sl-color-accent-low: #fcfbf7; /* --s-raised */
+	--sl-color-accent-high: #2b2b4c; /* --t-strong */
+	--sl-color-white: #2b2b4c; /* --t-strong */
+	--sl-color-gray-1: #2b2b4c; /* --t-strong */
+	--sl-color-gray-2: #545464; /* --t-secondary */
+	--sl-color-gray-3: #615f57; /* --t-muted */
+	--sl-color-gray-4: #d3cdb9; /* --b-hairline */
+	--sl-color-gray-5: #fcfbf7; /* --s-raised */
+	--sl-color-gray-6: #f8f6ef; /* --s-content */
+	--sl-color-black: #fcfbf7; /* --s-raised */
+}
+
+/* Departure Mono is reserved for the site title. */
+.site-title {
+	font-family: "Departure Mono", monospace;
+	font-size: 22px;
+	line-height: 1;
+	letter-spacing: 2px;
+	color: #2b2b4c; /* --t-strong */
+	font-synthesis: none;
+}
+
+.sl-markdown-content {
+	font-family: var(--sl-font);
+	font-size: 15px;
+}
+
+.sl-markdown-content :is(h1, h2, h3, h4, h5, h6) {
+	font-family: var(--sl-font);
+	font-weight: 600;
+	color: #2b2b4c; /* --t-strong */
+	letter-spacing: 0;
+}
+
+.expressive-code .frame pre,
+.expressive-code .frame.has-title:not(.is-terminal) .header {
+	border-radius: 0;
+}
+
+.expressive-code .frame:not(.is-terminal) pre {
+	border: 1px solid #d3cdb9; /* --b-hairline */
+}
+
+.sl-markdown-content :not(pre) > code {
+	background: var(--sl-color-bg-inline-code);
+	border: 1px solid #d3cdb9; /* --b-hairline */
+	color: #2b2b4c; /* --t-strong */
+	padding: 1px 5px;
+	font-size: 0.9em;
+	border-radius: 0;
+}
+
+.sl-markdown-content blockquote {
+	border-left: 3px solid #394f7d; /* --accent-text */
+	background: #fcfbf7; /* --s-raised */
+	padding: 12px 16px;
+	margin: 16px 0;
+	font-style: normal;
+}
