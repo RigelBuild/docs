@@ -14,6 +14,13 @@ export default defineConfig({
 					items: [{ autogenerate: { directory: "designs" } }],
 				},
 			],
+			customCss: ["./src/styles/fonts.css", "./src/styles/custom.css"],
+			// A bundled light Shiki theme keeps code samples readable on the light surface.
+			expressiveCode: {
+				themes: ["github-light"],
+				useStarlightDarkModeSwitch: false,
+				themeCssSelector: false,
+			},
 			tableOfContents: { minHeadingLevel: 2, maxHeadingLevel: 4 },
 		}),
 	],

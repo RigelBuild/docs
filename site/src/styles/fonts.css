@@ -1,0 +1,42 @@
+/* Kit fonts are copied into public/fonts because Starlight serves them directly. */
+@font-face {
+	font-family: "Geist Sans";
+	src: url("/fonts/geist-sans-400.woff2") format("woff2");
+	font-weight: 400;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Geist Sans";
+	src: url("/fonts/geist-sans-500.woff2") format("woff2");
+	font-weight: 500;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Geist Sans";
+	src: url("/fonts/geist-sans-600.woff2") format("woff2");
+	font-weight: 600;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Geist Mono";
+	src: url("/fonts/geist-mono-400.woff2") format("woff2");
+	font-weight: 400;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Geist Mono";
+	src: url("/fonts/geist-mono-500.woff2") format("woff2");
+	font-weight: 500;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Departure Mono";
+	src: url("/fonts/DepartureMono-Regular.otf") format("opentype");
+	font-weight: 400;
+	font-display: swap;
+}
