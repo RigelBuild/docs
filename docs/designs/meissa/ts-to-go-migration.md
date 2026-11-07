@@ -1158,10 +1158,10 @@ the meissa `README.md` install section to the flake `tools` package and
 
 ## Tasks
 
-- [ ] M1a Go module, moon, devenv, CI `go-dev`, `diff.go`
-- [ ] M1b `commentscan` scanners part 1 (scan, languages, comment blocks, routing)
+- [x] M1a Go module, moon, devenv, CI `go-dev`, `diff.go`
+- [x] M1b `commentscan` scanners part 1 (scan, languages, comment blocks, routing)
 - [ ] M2 `commentscan` Markdown, TSX and Astro; release-please `go` package; first `go/v*` tag
-- [ ] M3 flake `tools` package and `ref-gate`
+- [x] M3 flake `tools` package and `ref-gate`
 - [ ] M4 Renovate hash refresh in Go, `gomod` manager, Renovate config test
 - [ ] M5 `ledger` public package
 - [ ] M6a `design-ledger-gate` pure core
