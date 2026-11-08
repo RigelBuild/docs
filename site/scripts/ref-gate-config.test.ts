@@ -9,7 +9,7 @@ const flagged = (text: string) =>
 	findViolations(config, [`docs/x.md\u00001\u0000${text}`]).length > 0;
 
 describe("ref-gate config", () => {
-	test("allows only the exact compass gate name", () => {
+	test("allows only the exact krypton gate name", () => {
 		for (const text of [
 			"orion-ref-gate",
 			"`moon run orion-ref-gate:check` green",
