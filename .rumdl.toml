@@ -1,15 +1,1 @@
 extends = "$RUMDL_BASE_CONFIG"
-
-# These Compass records quote frozen ledger rows whose links are relative to the
-# old single-file ledger, so MD057 cannot resolve them.
-[per-file-ignores]
-"docs/designs/compass/agent/compass-agent-trees/design.md" = ["MD057"]
-"docs/designs/compass/infra/ci/compass-ci-check-naming/design.md" = ["MD057"]
-"docs/designs/compass/server/compass-comms-multi-actor-test-coverage/design.md" = ["MD057"]
-"docs/designs/compass/server/compass-forge-write-path/design.md" = ["MD057"]
-"docs/designs/compass/server/compass-issue-model/design.md" = ["MD057"]
-"docs/designs/compass/server/compass-linear-agent-responder/design.md" = ["MD057"]
-"docs/designs/compass/server/compass-server-ownership-layer-amendment/design.md" = ["MD057"]
-"docs/designs/compass/ui/compass-board-view/design.md" = ["MD057"]
-"docs/designs/compass/ui/compass-native-packaging/design.md" = ["MD057"]
-"docs/designs/compass/ui/compass-sidebar-pins/design.md" = ["MD057"]

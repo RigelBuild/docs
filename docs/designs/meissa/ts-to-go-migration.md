@@ -1,8 +1,8 @@
 # meissa: TypeScript to Go migration
 
 Linear: RIG-5901. Matt's ruling B (2026-10-19): every non-frontend TypeScript
-surface ports to Go now, not on touch. Ruling of 2026-11-01: Compass is archived
-and tabit is deleted, so neither is a consumer this record waits on. Matt ruled
+surface ports to Go now, not on touch. Ruling of 2026-11-01: the old product is
+archived and tabit is deleted, so neither is a consumer this record waits on. Matt ruled
 all eight open questions as recommended on 2026-11-02 (§ Resolved decisions).
 
 Ledger-impact: [DL-647](decisions/go/DL-647.md) records the module contract:
