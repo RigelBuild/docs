@@ -3,6 +3,7 @@ dist/
 .astro/
 .devenv/
 site/dist/
+site/.bundle/
 site/.astro/
 site/node_modules/
 .direnv/
@@ -12,3 +13,4 @@ site/src/sidebar.generated.ts
 node_modules/.cache/
 result
 result-*
+site/public/_bundle.json

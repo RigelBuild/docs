@@ -1,12 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseDecisionFile } from "@rigelbuild/design-ledger-gate/decision-files.ts";
-import {
-	buildDecisionIndex,
-	extractTitle,
-	routeSlug,
-	stripFirstH1,
-	transform,
-} from "./gather.ts";
+import { extractTitle, routeSlug, stripFirstH1 } from "@rigelbuild/docs-bundle";
+import { buildDecisionIndex, transform } from "./gather.ts";
 
 describe("gather transforms", () => {
 	test("derives a title from the first H1 and removes only that H1", () => {
@@ -15,14 +10,16 @@ describe("gather transforms", () => {
 		expect(extractTitle(source, "docs/designs/demo/README.md")).toBe(
 			"Project overview",
 		);
-		expect(stripFirstH1(source)).toBe("First paragraph.\n\n# Later heading\n");
+		expect(stripFirstH1(source)).toBe(
+			"\nFirst paragraph.\n\n# Later heading\n",
+		);
 	});
 	test("ignores H1 text inside fenced code", () => {
 		const source = "```md\n# Example\n```\n\n# Actual title\n\nBody";
 		expect(extractTitle(source, "docs/designs/demo/README.md")).toBe(
 			"Actual title",
 		);
-		expect(stripFirstH1(source)).toBe("```md\n# Example\n```\n\nBody");
+		expect(stripFirstH1(source)).toBe("```md\n# Example\n```\n\n\nBody");
 	});
 
 	test("rewrites gathered Markdown links to their site route", () => {

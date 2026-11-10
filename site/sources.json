@@ -1,0 +1,32 @@
+[
+	{
+		"repo": "RigelBuild/meissa",
+		"mount": "/meissa/",
+		"config": "default"
+	},
+	{
+		"repo": "RigelBuild/terraform-provider-googleworkspace",
+		"mount": "/terraform-provider-googleworkspace/",
+		"config": "default"
+	},
+	{
+		"repo": "RigelBuild/solid-markdown",
+		"mount": "/solid-markdown/",
+		"config": "default"
+	},
+	{
+		"repo": "RigelBuild/jj-vine",
+		"mount": "/jj-vine/",
+		"config": "default"
+	},
+	{
+		"repo": "RigelBuild/trunk-mq-mcp",
+		"mount": "/trunk-mq-mcp/",
+		"config": "default"
+	},
+	{
+		"repo": "RigelBuild/compass-forge-testbed",
+		"mount": "/compass-forge-testbed/",
+		"config": "default"
+	}
+]
