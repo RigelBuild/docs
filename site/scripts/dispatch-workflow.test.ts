@@ -63,12 +63,25 @@ describe("canonical docs dispatch workflow", () => {
 		const steps = dispatch.steps.map(record);
 		const tokenStep = steps.find((step) => step.id === "app-token");
 		expect(tokenStep?.id).toBe("app-token");
+		expect(String(tokenStep?.uses)).toStartWith(
+			"actions/create-github-app-token@",
+		);
+		const tokenInputs = record(tokenStep?.with);
+		expect(tokenInputs.owner).toBe("RigelBuild");
+		expect(tokenInputs.repositories).toBe("docs");
+		expect(
+			Object.keys(tokenInputs).filter((key) => key.startsWith("permission-")),
+		).toEqual(["permission-actions"]);
+		expect(tokenInputs["permission-actions"]).toBe("write");
 		const runStep = steps.find(
 			(step) =>
 				typeof step.run === "string" && step.run.includes("gh workflow run"),
 		);
 		expect(record(runStep?.env).GH_TOKEN).toBe(
 			`\${{ steps.app-token.outputs.token }}`,
+		);
+		expect(runStep?.run).toBe(
+			"gh workflow run deploy.yml --repo RigelBuild/docs --ref main",
 		);
 	});
 
