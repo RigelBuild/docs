@@ -31,4 +31,6 @@ Check the returned ID before creating `docs/designs/<project>/decisions/<area>/D
 
 Run `bun install`, `bun test`, `bun run gate`, `bun run ref-gate`, `rumdl check .`, `biome ci .`, and `bun run build`. The gather step reads checked-in Markdown under `docs/`, renders decision pages and per-project decision indexes into generated content, and the Astro Starlight site publishes to the Cloudflare Pages project `docs`.
 
+The canonical source-repository dispatch workflow is `site/dispatch/docs-dispatch.yml`.
+
 Cloudflare assigns the Pages hostname for project `docs`; the site does not configure a custom domain.
