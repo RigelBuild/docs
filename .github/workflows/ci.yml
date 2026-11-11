@@ -65,3 +65,6 @@ jobs:
 
       - name: Build site
         run: bun run build
+
+      - name: Reference gate over published output
+        run: bun run ref-gate:dist

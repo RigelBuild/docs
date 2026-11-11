@@ -19,11 +19,14 @@ import {
 	stripFirstH1,
 	writeManifest,
 } from "@rigelbuild/docs-bundle";
+import { YAML } from "bun";
 import { remapSourceRoutes } from "./bundle-routes.ts";
 
 const REPO_SLUG = "RigelBuild/docs";
 const DECISION_PATH_RE =
 	/^docs\/designs\/([^/]+)\/decisions\/[^/]+\/DL-\d+\.md$/;
+const SOURCE_FRONTMATTER_RE = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+const DESIGN_LINK = /(!?\[[^\][\n]*)?(\]\()([^)\s]+)(\s+"[^"]*")?(\))/g;
 
 function frontmatter(title: string, sourcePath?: string): string {
 	const escaped = title.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -65,12 +68,25 @@ function rewriteDesignLinks(
 	gathered: ReadonlySet<string>,
 ): string {
 	return source.replace(
-		/(\]\()([^\s)]+)(\))/g,
-		(match, open: string, target: string, close: string) => {
+		DESIGN_LINK,
+		(
+			match,
+			label: string | undefined,
+			open: string,
+			target: string,
+			title: string | undefined,
+			close: string,
+		) => {
+			if (label?.startsWith("!")) return match;
 			if (/^(?:[a-z][a-z\d+.-]*:|\/|#)/i.test(target)) return match;
-			const [path, ...suffix] = target.split(/[?#]/, 2);
-			if (path === undefined) return match;
-			const resolved = join(dirname(sourcePath), path).replaceAll("\\", "/");
+			const suffixAt = target.search(/[?#]/);
+			const linkPath = suffixAt < 0 ? target : target.slice(0, suffixAt);
+			const suffix = suffixAt < 0 ? "" : target.slice(suffixAt);
+			if (linkPath.length === 0) return match;
+			const resolved = join(dirname(sourcePath), linkPath).replaceAll(
+				"\\",
+				"/",
+			);
 			const normalized = resolved
 				.split("/")
 				.reduce<string[]>((parts, segment) => {
@@ -79,11 +95,14 @@ function rewriteDesignLinks(
 					return parts;
 				}, [])
 				.join("/");
+			const prefix = `${label ?? ""}${open}`;
+			const tail = `${title ?? ""}${close}`;
 			if (/\.md$/i.test(normalized) && gathered.has(normalized)) {
 				const route = routeSlug(normalized.replace(/^docs\//, ""));
-				return `${open}${route}${suffix.length > 0 ? `#${suffix.join("")}` : ""}${close}`;
+				return `${prefix}${route}${suffix}${tail}`;
 			}
-			return `${open}https://github.com/${REPO_SLUG}/blob/main/${normalized}${close}`;
+			const kind = linkPath.endsWith("/") ? "tree" : "blob";
+			return `${prefix}https://github.com/${REPO_SLUG}/${kind}/main/${normalized}${suffix}${tail}`;
 		},
 	);
 }
@@ -118,6 +137,40 @@ async function markdownFiles(directory: string): Promise<string[]> {
 	return files;
 }
 
+function frontmatterTitle(fields: unknown): string | undefined {
+	if (typeof fields !== "object" || fields === null) return undefined;
+	if ("title" in fields && typeof fields.title === "string")
+		return fields.title;
+	if ("page_title" in fields && typeof fields.page_title === "string")
+		return fields.page_title;
+	return undefined;
+}
+
+function splitFrontmatter(markdown: string): {
+	body: string;
+	fields: unknown;
+} {
+	const match = SOURCE_FRONTMATTER_RE.exec(markdown);
+	if (match === null) return { body: markdown, fields: undefined };
+	let fields: unknown;
+	try {
+		fields = YAML.parse(match[1] ?? "");
+	} catch {
+		// Source repos own their frontmatter; invalid YAML only loses the title.
+		fields = undefined;
+	}
+	return { body: markdown.slice(match[0].length), fields };
+}
+
+function pageTitle(body: string, fields: unknown, sourcePath: string): string {
+	const hasH1 = stripFirstH1(body) !== body;
+	if (!hasH1) {
+		const fallback = frontmatterTitle(fields);
+		if (fallback !== undefined) return fallback;
+	}
+	return extractTitle(body, sourcePath);
+}
+
 async function writeSourcePages(
 	contentRoot: string,
 	sources: readonly FetchedSource[],
@@ -132,8 +185,10 @@ async function writeSourcePages(
 				join(source.root, page.sourcePath),
 				"utf8",
 			);
+			const { body: markdownBody, fields } = splitFrontmatter(markdown);
+			const title = pageTitle(markdownBody, fields, page.sourcePath);
 			const body = rewriteBundleLinks(
-				stripFirstH1(markdown),
+				stripFirstH1(markdownBody),
 				page,
 				routes,
 				source.root,
@@ -142,7 +197,7 @@ async function writeSourcePages(
 						`gather: broken link ${link.repo}/${link.sourcePath} -> ${link.target}`,
 					),
 			);
-			const content = `---\ntitle: "${escapeTitle(extractTitle(markdown, page.sourcePath))}"\neditUrl: "https://github.com/${source.repo}/edit/main/${page.sourcePath}"\n---\n${body}`;
+			const content = `---\ntitle: "${escapeTitle(title)}"\neditUrl: "https://github.com/${source.repo}/edit/main/${page.sourcePath}"\n---\n${body}`;
 			const destination = join(
 				contentRoot,
 				page.route.replace(/^\/+/, ""),
@@ -232,11 +287,17 @@ export async function gather(opts: GatherOptions): Promise<BundleManifest> {
 	const gathered = new Set(sources.keys());
 	const contentRoot = join(opts.siteRoot, "src", "content", "docs");
 	await rm(contentRoot, { recursive: true, force: true });
+	const sourceList = opts.sources
+		.map((source) => {
+			const mount = source.mount.replace(/^\/+|\/+$/g, "");
+			return `- [${source.repo.slice(source.repo.indexOf("/") + 1)}](/${mount}/)`;
+		})
+		.join("\n");
 	const landing = join(contentRoot, "index.md");
 	await mkdir(dirname(landing), { recursive: true });
 	await writeFile(
 		landing,
-		`${frontmatter("Rigel public design docs")}\nDesign records and decisions for Rigel's public repositories.\n\n## Designs\n\nProjects are listed in the sidebar. Their design records and decisions are grouped by repository.\n`,
+		`${frontmatter("Rigel public design docs")}\nDesign records and decisions for Rigel's public repositories.\n\n## Designs\n\nProjects are listed in the sidebar. Their design records and decisions are grouped by repository.\n\n## Code repositories\n\nEach bundled repository has its own sidebar group.\n\n${sourceList}\n`,
 	);
 	const decisions = new Map<string, DecisionRow[]>();
 	const designPages: BundlePage[] = [];

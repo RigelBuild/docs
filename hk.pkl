@@ -27,7 +27,7 @@ hooks {
             }
             ["build"] = new Step {
                 depends = "ref-gate"
-                check = "bun run fetch && bun run build"
+                check = "bun run fetch && bun run build && bun run ref-gate:dist"
             }
         }
     }

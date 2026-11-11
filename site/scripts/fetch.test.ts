@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	buildCloneArgs,
 	buildGitEnvironment,
+	isSource,
 	parsePins,
 	sparsePatterns,
 } from "./fetch.ts";
@@ -51,6 +52,7 @@ describe("source fetch command construction", () => {
 			HOME: "/home/test",
 			GIT_TERMINAL_PROMPT: "0",
 			GIT_CONFIG_NOSYSTEM: "1",
+			GIT_CONFIG_GLOBAL: "/dev/null",
 		});
 	});
 
@@ -64,5 +66,25 @@ describe("source fetch command construction", () => {
 				`RigelBuild/meissa=${"b".repeat(40)},RigelBuild/meissa=${"c".repeat(40)}`,
 			),
 		).toThrow("duplicate pin");
+	});
+
+	test("rejects dot-named repositories in pins and source lists", () => {
+		for (const repo of [
+			"RigelBuild/.",
+			"RigelBuild/..",
+			"RigelBuild/.hidden",
+		]) {
+			expect(() => parsePins(`${repo}=${"b".repeat(40)}`)).toThrow(
+				"invalid pin",
+			);
+			expect(isSource({ repo, mount: "tool", config: "default" })).toBe(false);
+		}
+		expect(
+			isSource({
+				repo: "RigelBuild/jj-vine",
+				mount: "/jj-vine/",
+				config: "default",
+			}),
+		).toBe(true);
 	});
 });

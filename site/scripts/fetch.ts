@@ -20,6 +20,8 @@ interface FetchOptions {
 	production: boolean;
 }
 
+const REPO_PATTERN = /^RigelBuild\/[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
+
 const IMAGE_EXTENSIONS = [
 	"png",
 	"jpg",
@@ -37,7 +39,7 @@ export function parsePins(value: string | undefined): Map<string, string> {
 		const [repo, sha, ...extra] = entry.trim().split("=");
 		if (
 			repo === undefined ||
-			!/^RigelBuild\/[A-Za-z0-9_.-]+$/.test(repo) ||
+			!REPO_PATTERN.test(repo) ||
 			sha === undefined ||
 			!/^[a-f\d]{40}$/i.test(sha) ||
 			extra.length > 0
@@ -89,6 +91,7 @@ export function buildGitEnvironment(
 	const safe: NodeJS.ProcessEnv = {
 		GIT_TERMINAL_PROMPT: "0",
 		GIT_CONFIG_NOSYSTEM: "1",
+		GIT_CONFIG_GLOBAL: "/dev/null",
 	};
 	for (const name of [
 		"PATH",
@@ -171,13 +174,13 @@ async function fetchSource(
 	};
 }
 
-function isSource(value: unknown): value is Source {
+export function isSource(value: unknown): value is Source {
 	if (typeof value !== "object" || value === null || Array.isArray(value))
 		return false;
 	const record = value as Record<string, unknown>;
 	return (
 		typeof record.repo === "string" &&
-		/^RigelBuild\/[A-Za-z0-9_.-]+$/.test(record.repo) &&
+		REPO_PATTERN.test(record.repo) &&
 		typeof record.mount === "string" &&
 		(record.config === "default" || record.config === "required")
 	);
