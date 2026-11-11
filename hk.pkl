@@ -1,0 +1,34 @@
+// Git hooks managed by hk (https://hk.jdx.dev).
+amends "package://github.com/jdx/hk/releases/download/v2.11.1/hk@2.11.1#/Config.pkl"
+
+default_branch = "main"
+
+hooks {
+    ["pre-push"] {
+        steps {
+            ["install"] = new Step {
+                check = "bun install --frozen-lockfile"
+            }
+            ["test"] = new Step {
+                depends = "install"
+                check = "bun test"
+            }
+            ["markdown"] = new Step {
+                depends = "test"
+                check = "rumdl check ."
+            }
+            ["biome"] = new Step {
+                depends = "markdown"
+                check = "biome ci ."
+            }
+            ["ref-gate"] = new Step {
+                depends = "biome"
+                check = "bun run ref-gate"
+            }
+            ["build"] = new Step {
+                depends = "ref-gate"
+                check = "bun run build"
+            }
+        }
+    }
+}
