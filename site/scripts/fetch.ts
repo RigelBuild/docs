@@ -18,7 +18,7 @@ interface FetchOptions {
 	workDir: string;
 	pins: ReadonlyMap<string, string>;
 	production: boolean;
-	/** Clone URL prefix ending in "/". Defaults to GitHub. */
+	/** Clone URL prefix. Defaults to GitHub. */
 	baseUrl?: string;
 }
 
@@ -85,7 +85,8 @@ export function buildCloneArgs(
 		"--sparse",
 	];
 	if (pin === undefined) args.push("--depth", "1");
-	args.push(`${baseUrl}${repo}.git`, destination);
+	const prefix = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+	args.push(`${prefix}${repo}.git`, destination);
 	return args;
 }
 
@@ -110,6 +111,13 @@ export function buildGitEnvironment(
 		if (value !== undefined) safe[name] = value;
 	}
 	return safe;
+}
+
+// First argument after any leading `-C <dir>` or `-c <kv>` pairs.
+function gitSubcommand(args: readonly string[]): string | undefined {
+	let index = 0;
+	while (args[index] === "-C" || args[index] === "-c") index += 2;
+	return args[index];
 }
 
 function runGit(
@@ -137,7 +145,11 @@ function runGit(
 		child.on("close", (code) => {
 			if (code === 0) resolve(stdout.trim());
 			else
-				reject(new Error(`git ${args[0]} failed (${code}): ${stderr.trim()}`));
+				reject(
+					new Error(
+						`git ${gitSubcommand(args)} failed (${code}): ${stderr.trim()}`,
+					),
+				);
 		});
 	});
 }
