@@ -146,7 +146,10 @@ function frontmatterTitle(fields: unknown): string | undefined {
 	return undefined;
 }
 
-function splitFrontmatter(markdown: string): {
+function splitFrontmatter(
+	markdown: string,
+	label: string,
+): {
 	body: string;
 	fields: unknown;
 } {
@@ -157,6 +160,7 @@ function splitFrontmatter(markdown: string): {
 		fields = YAML.parse(match[1] ?? "");
 	} catch {
 		// Source repos own their frontmatter; invalid YAML only loses the title.
+		console.warn(`gather: unparsable frontmatter ${label}`);
 		fields = undefined;
 	}
 	return { body: markdown.slice(match[0].length), fields };
@@ -185,7 +189,10 @@ async function writeSourcePages(
 				join(source.root, page.sourcePath),
 				"utf8",
 			);
-			const { body: markdownBody, fields } = splitFrontmatter(markdown);
+			const { body: markdownBody, fields } = splitFrontmatter(
+				markdown,
+				`${source.repo}/${page.sourcePath}`,
+			);
 			const title = pageTitle(markdownBody, fields, page.sourcePath);
 			const body = rewriteBundleLinks(
 				stripFirstH1(markdownBody),
