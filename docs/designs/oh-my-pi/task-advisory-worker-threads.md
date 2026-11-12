@@ -25,19 +25,35 @@ parent runs on a worker.
   only cross-thread pair today is main parent and worker child. Main is the
   parent thread for that pair.
 
-### R2 — A dead worker terminally disposes every instance homed on it
+### R2 — A dead worker terminally disposes every live instance homed on it; parked state has no home
 
-When a worker exits, the advisory hub treats each session instance homed on it
-as disposed, not parked. Assignments owned by those instances end, their
-children are orphaned, and their check timers, retained snapshots and
+When a worker exits, the advisory hub treats each **live** session instance
+homed on it as disposed, not parked. Assignments owned by those instances end,
+their children are orphaned, and their check timers, snapshot sources and
 subscriptions are released. A later revival of the same agent attaches a fresh
 instance with no assignment; the next follow-up turn mints a new one.
 
-Parking was the alternative. It loses because a crash bypasses
-`AgentLifecycleManager.park`, so nothing later calls the parked-expiry path for
-that session, and its lineage entry would never be freed. The registry's own
-crash path also never claims the session survived: it detaches the ref and
-marks it `parked` (on-disk transcript) or `aborted`.
+Parking a crashed instance was the alternative. It loses because a crash
+bypasses `AgentLifecycleManager.park`, so `AdvisoryHub.parkSession` never runs
+for that session, and the lifecycle release path never calls `expireParked`
+for it. Its lineage entry would never be freed. The registry's own crash path
+also never claims the session survived: it detaches the ref and marks it
+`parked` (on-disk transcript) or `aborted`.
+
+**Parked state is not homed on a worker.** `AgentLifecycleManager.park` runs on
+main and calls `AdvisoryHub.parkSession` before it disposes the session. From
+then on no session exists on any thread, and a revival may land on another
+worker. The hub therefore clears the entry's `home` when it parks it, and
+`disposeHome` leaves parked entries alone. The lifecycle's own release path
+(`release` calls `expireParked`) frees them, and it still runs after the
+worker dies, because `forgetReviver` keeps the adoption and its release.
+
+Expiring parked state on worker exit too was the other option. It loses
+because worker shutdown is ordinary: the last open session on a worker closes
+when it parks, and the pool may then retire the idle worker. Each parked child
+would then drop out of its parent's `children()` in worker mode only. That
+breaks parity with the in-thread "retains a paused snapshot" behaviour
+(#241), and no leak needs it.
 
 ### R3 — `TaskAdvisory` gains `contractVersion: 1`, and nothing else changes
 
@@ -50,11 +66,27 @@ contract and not on an oh-my-pi version pin. This record adds it.
 
 The consumer also asked for fail-closed behaviour, and this design gives it:
 
-- A child that has no running assignment, or whose worker died, is absent
-  from `children()`. `remind` on its ref returns `unavailable`.
+- A child with no assignment, or whose live instance was homed on a worker
+  that died, is absent from `children()`. `remind` on its ref returns
+  `unavailable`. A parked child stays listed with `phase: "paused"`, as in
+  PR #241.
 - A child whose messaging is off shows `messaging: { status: "unsupported" }`.
 - `ctx.taskAdvisory` is `undefined` only when the session has no advisory
   attachment. It is never present and empty.
+
+### R4 — Admission relaxes the phase check, never the assignment id
+
+A message admitted for an assignment stays valid after that assignment goes
+terminal, so a reply sent in the child's last turn still reaches the parent.
+It is rejected at consumption as soon as the lineage mints a new assignment for
+the child. This holds even when the instances and branches are the same
+(`wake`, follow-up turn). #241's `validateBinding` relaxed both checks in
+admitted mode. That let a reply or reminder from assignment A reach model input
+during assignment B.
+
+A retained admission-generation record was the alternative. It would let a
+chosen message survive a re-mint, but no behaviour needs that. It would add
+per-message state and cleanup to the hub.
 
 ## Direction
 
@@ -69,9 +101,13 @@ The consumer also asked for fail-closed behaviour, and this design gives it:
   change.
 - **Prior art.**
   - [Ray object ownership](https://docs.ray.io/en/master/core/fault-tolerance/objects.html):
-    the process that creates an object owns its metadata, and objects fate-share
-    with their owner when it dies. Borrowed: one owner (main) holds all lineage
-    metadata; state tied to a dead worker is dropped, not recovered.
+    the process that creates an object owns its metadata. Ray can recover
+    from losing the worker that stores or computes a value, but not from owner
+    failure. Borrowed: one owner (main) holds all lineage metadata, and a
+    worker never holds authoritative state. Not borrowed: Ray re-executes work
+    lost with a worker. R2 drops it instead, because a live session's
+    in-memory turn cannot be recomputed. A transcript revival is a new
+    instance, so R2 is a local policy, not Ray's.
   - [Temporal activity heartbeats](https://docs.temporal.io/develop/typescript/activities/timeouts):
     the worker running an activity reports progress to the server, and the
     server owns timeouts. Borrowed: the child's home thread reports progress
@@ -86,9 +122,11 @@ The consumer also asked for fail-closed behaviour, and this design gives it:
   to a core runtime contract: exact RPC table, exact cleanup rules, and tests
   that run against a real worker.
 - **Simpler option.** Mirror the lineage into every worker and sync it with
-  notifications. Rejected: lineage checks must be atomic with delivery, and a
-  mirror that lags a mutation lets a stale reminder or reply through. One
-  owner with synchronous worker-to-main reads has no consistency window.
+  notifications. Rejected: admission must run against current lineage, and a
+  mirror that lags a mutation lets a stale reminder or reply through. With one
+  owner, admission happens on main against the live lineage, and every later
+  consumption point re-checks with a synchronous read. There is no
+  distributed transaction, and none is needed.
 
 ## Problem / Intent
 
@@ -138,9 +176,10 @@ Why a new abstraction: the advisory needs one owner for state that spans two
 sessions on possibly different threads (parent and child). No existing service
 holds per-assignment state. `IrcBus` owns delivery, not identity, and putting
 timers and lineage in it would mix two concerns. The hub reuses the bus for
-delivery and reuses `AssignmentLineage`, `AdvisorySessionAdapter`,
-`AdvisorySnapshotSource` and `parseReportInput` from #241/#243 unchanged in
-logic.
+delivery. It reuses `AssignmentLineage`, `AdvisorySnapshotSource` and
+`parseReportInput` from #241/#243, with three named lineage changes (R4,
+`onMint`, `assignmentIdOf`; see Task 1). `AdvisorySessionAdapter` becomes the
+pure function `advisoryEventOf`.
 
 ### Identity across threads
 
@@ -189,19 +228,40 @@ assignment and projects `wallMs` and `unblockedMs` at read time with the same
 clock. Unblocked time advances only while no blocking interval is open,
 exactly as `AdvisorySnapshotSource` does today.
 
-- The hub creates a new source when it mints an assignment, so counters reset
-  per assignment without the home thread knowing about the mint. #241 reset
-  its adapter when it noticed a new assignment id on the next event. The
-  `ready` event is sent on every `agent_start`, and the source keeps the first
-  one after the mint (`#readyAt ??= at`), so a follow-up turn starts its own
-  clock.
-- Events for a session with no running assignment are dropped on main.
+- **One trigger creates sources: `AssignmentLineage.onMint`.** The lineage
+  mints in four places: the explicit `mint`, `mintFollowUp` (which calls
+  `mint`), `attach` of a parked session (which re-mints its own assignment on
+  revival) and `wake` after a terminal turn. Only the first two go through the
+  hub's own methods, so wrapping them would miss revival and wake. The port
+  therefore adds one notification to the lineage. `mint` fires
+  `onMint(ref)` after it stores the new assignment, and after the terminal
+  listeners for the assignment it replaced. The hub's `onMint` listener is the
+  only code that creates an `AdvisorySnapshotSource`. Counters therefore reset
+  per assignment on every path, and the home thread never needs to learn about
+  a mint. #241 instead reset its adapter when it saw a new assignment id on the
+  next event. That fallback is gone, so `onMint` must cover every mint.
+- The `ready` event is sent on every `agent_start`, and the source keeps the
+  first one after the mint (`#readyAt ??= at`), so a follow-up, woken or
+  revived turn starts its own clock.
+- Events for a session with no running assignment are dropped on main. So are
+  events whose `instanceId` is not the one in the attach table. That covers a
+  late event from a session main has already parked or detached.
 - The publisher does not use `SessionPublisher`'s mirror: that forwards events
   only while main watches the session.
-- **Parked children.** On `parkAgent`, the hub records `parkedAt` and keeps the
-  last source. Reads project with `now = parkedAt` and `phase: "paused"`. A
-  resume or release clears it. This is #241's "retains a paused snapshot"
-  behaviour without a per-parent copy.
+- **Parked children.** `AdvisoryHub.parkSession` runs on main inside
+  `AgentLifecycleManager.park`, before the lifecycle disposes the session. It
+  calls `lineage.parkSession`, which fires `onPark`. The hub's `onPark` listener
+  stamps `parkedAt = advisoryNow()` on the parked session's own source and
+  keeps it. `parkSession` then deletes the session's attach-table entry, so
+  parked state has no `home` (R2). Reads project a parked source with
+  `now = parkedAt` and `phase: "paused"`. The session's later dispose on its
+  home thread calls `detach(sessionId, instanceId)`. That is a no-op: the
+  attach entry is gone, and `lineage.disposeSession` returns early because
+  `parkSession` already removed the instance. Revival (`attach` of the parked
+  session on any thread) fires `onResumeOrRelease` and re-mints, which replaces
+  the source. `release` calls `expireParked`, which fires
+  `onResumeOrRelease` and `onTerminal` and frees the source. This is #241's
+  "retains a paused snapshot" behaviour without a per-parent copy.
 
 ### Admission and stale-message rejection
 
@@ -215,11 +275,20 @@ exactly as `AdvisorySnapshotSource` does today.
   duplicate detection, voluntary-report suspension (#243) and rollback are
   keyed by `assignmentId:requestId` and by message id in the hub. Nothing is
   looked up through a `WeakMap<AgentSession>`.
-- **No admitted marker.** #241 set a symbol on the message object after
-  admission so later checks could relax the phase test. Every bound message
-  reaching a recipient queue has passed admission, so consumption checks always
-  run in admitted mode, and the symbol is deleted. This removes the only
-  advisory state that structured clone dropped.
+- **No admitted marker, and admission never outlives its assignment.** #241
+  set a symbol on the message object after admission. Its
+  `validateBinding(…, admitted = true)` then skipped both the running-phase
+  check and the assignment-id check:
+  `(!admitted && (assignment.phase !== "running" || assignment.ref.assignmentId !== binding.ref.assignmentId))`.
+  As a result, a message admitted for assignment A stayed valid after `wake`
+  or a follow-up minted assignment B on the same instances and branches. The
+  port splits that clause (R4): `assignmentId` equality is checked always, and
+  only the `phase !== "running"` check is relaxed for an admitted message.
+  Every bound message that reaches a recipient queue has passed admission, so
+  consumption checks always pass `admitted = true`, and the symbol is deleted.
+  This removes the only advisory state that structured clone dropped. A
+  message admitted under A therefore survives A going terminal, but not a
+  re-mint.
 - **Consumption points stay where they are** (the `IrcBridge` deliver, drain
   and queue paths and `convertToLlm`, all on the recipient's home thread). Each
   point collects every bound record it holds and makes **one** batched
@@ -252,12 +321,23 @@ advisory service directly after the agents service and `SubagentWorker` runs
 exit hooks in list order. It:
 
 1. releases every hub subscription the worker opened (`PeerCleanups`), and
-2. calls `hub.disposeHome(peer.threadId)`, which terminally disposes each
-   attached instance whose `home` is that thread (R2): own assignment ended,
-   children orphaned, watches and timers cleared, parked snapshot dropped.
+2. calls `hub.disposeHome(peer.threadId)`. That walks the attach table, the
+   only home index the hub keeps. For each entry whose `home` is that thread,
+   it calls `lineage.disposeSession(sessionId, instanceId, "dispose")` and
+   deletes the entry (R2). The lineage's `onTerminal` listeners then end the
+   instance's own assignment, orphan its children, and clear their watches,
+   timers and sources.
 
-A main-thread parent then sees the child disappear from `children()`, and
-`remind` on its old ref returns `unavailable`.
+Parked state is not in the attach table: `parkSession` deleted its entry (see
+*Parked children*). `disposeHome` therefore leaves it alone, whether the worker
+crashed or retired idle after its sessions parked. The lifecycle's
+`expireParked` call on `release` frees it. A live session that the crash
+cut off is in the attach table, so `disposeHome` finds it even though no
+`detach` ever arrived.
+
+A main-thread parent then sees a crashed live child disappear from
+`children()`, and `remind` on its old ref returns `unavailable`. A parked child
+stays listed as paused.
 
 ### Alternatives considered
 
@@ -308,7 +388,16 @@ tests. Logic does not change except where named.
 - `src/task/assignment-lineage.ts`: `AssignmentLineage`, `AssignmentBinding`,
   `AdvisoryTransportBinding`, `AdvisoryBindingFailure` from #241. Delete the
   module singleton `export const assignmentLineage`; the hub owns the only
-  instance.
+  instance. Three named changes:
+  - `validateBinding` checks `assignment.ref.assignmentId !==
+    binding.ref.assignmentId` unconditionally and relaxes only
+    `assignment.phase !== "running"` when `admitted` is true (R4).
+  - New `onMint(listener)`. `mint` calls it with the new ref after it stores
+    the assignment. Because `attach` (parked revival) and `wake` reach `mint`,
+    every mint path fires it.
+  - New `assignmentIdOf(sessionId)`: the id of the session's stored
+    assignment in any phase, without `getAssignment`'s instance checks. The
+    hub prunes snapshot sources with it.
 - `src/task/advisory-snapshot-source.ts`: `AdvisorySnapshotSource` and
   `AdvisoryEvent` from #241.
 - `src/task/advisory-session-adapter.ts`: replace the class with
@@ -325,6 +414,10 @@ Interfaces:
 // src/task/advisory-session-adapter.ts
 export function advisoryEventOf(event: AgentSessionEvent, at: number): AdvisoryEvent | undefined;
 
+// src/task/assignment-lineage.ts (on class AssignmentLineage)
+onMint(listener: (ref: AssignmentRef) => void): () => void;
+assignmentIdOf(sessionId: string): string | undefined;
+
 // src/extensibility/extensions/task-advisory.ts
 export interface TaskAdvisory {
 	readonly contractVersion: 1;
@@ -340,7 +433,15 @@ Tests: port `test/registry/assignment-lineage.test.ts`,
 `test/task/advisory-snapshot.test.ts`, `test/task/advisory-report.test.ts`.
 Rewrite `test/task/advisory-session-adapter.test.ts` against
 `advisoryEventOf` with the same cases (overlapping tools, retry, compaction,
-repeated readiness, usage counted once by id).
+repeated readiness, usage counted once by id). Lineage additions:
+
+- #241's "retains admitted messages after terminal" case changes. After
+  `terminal` the old binding still validates with `admitted = true`. After
+  `wake` mints B on the same instances and branches, it returns
+  `"stale-assignment"` with `admitted = true`.
+- `onMint` fires exactly once each for `mint`, `wake` after terminal, and
+  `attach` of a parked session that owns an assignment. It does not fire for
+  `attach` of a live session.
 
 ### Task 2 — `AdvisoryHub` on main and bound bus delivery
 
@@ -349,8 +450,9 @@ keyed by ids instead of sessions:
 
 - one `AssignmentLineage`;
 - the attach table `sessionId → { instanceId, agentId, home }` and the reverse
-  index `agentId → sessionId`;
-- `sources: Map<assignmentId, { source: AdvisorySnapshotSource; parkedAt?: number }>`;
+  index `agentId → sessionId`. This is the hub's only home index. Live
+  instances are in it; parked sessions are not;
+- `sources: Map<childSessionId, { assignmentId: string; source: AdvisorySnapshotSource; parkedAt?: number }>`;
 - `watches: Map<"assignmentId:requestId", Watch>` with #241's fields
   (`timer`, `content` digest, `reply`, `replyDelivered`, `expired`,
   `pending`, `followUpSent`) and `issuedIds`;
@@ -359,11 +461,30 @@ keyed by ids instead of sessions:
   the bus message id; entries are removed on receive or rollback);
 - `listeners: Map<sessionId, Set<(event: TaskAdvisoryEvent) => void>>`.
 
-Lineage listeners (`onPark`, `onResumeOrRelease`, `onTerminal`) clear watches,
-`issuedIds`, sources and parked marks the way #241's runtime did. `children`
-and `current` project from `sources` with `advisoryNow()`, or with `parkedAt`
-for a parked child (phase `"paused"`). `localCoverage` stays
+Lineage listeners:
+
+- `onMint(ref)` sets `sources[ref.childSessionId]` to a fresh source for
+  `ref.assignmentId`. This replaces any older entry, including its `parkedAt`.
+  It is the only place a source is created.
+- `onPark(sessionId)` stamps `parkedAt = advisoryNow()` on that session's
+  source and clears the session's own watches and `issuedIds`, as #241 did.
+- `onResumeOrRelease(sessionId)` clears `parkedAt`.
+- `onTerminal(assignmentId)` clears that assignment's watches, timers and
+  `issuedIds`, as #241 did.
+- After each hub method that can remove an assignment (`detach`,
+  `disposeHome`, `expireParked`), the hub deletes every `sources` entry whose
+  `assignmentId` is not `lineage.assignmentIdOf(childSessionId)`. Orphaned
+  children are covered too, because the lineage deletes their assignments.
+
+`children` and `current` project from `sources` with `advisoryNow()`, or with
+`parkedAt` for a parked child (phase `"paused"`). `localCoverage` stays
 `detector-unregistered` for both detectors, as in #241.
+
+`parkSession(sessionId)` calls `lineage.parkSession(sessionId)` and then
+deletes the session's attach-table entry and reverse index. `detach` of an
+instance with no attach entry is a no-op. `disposeHome(home)` calls
+`lineage.disposeSession(sessionId, instanceId, "dispose")` for each attach
+entry with that `home`, deletes those entries, then prunes `sources`.
 
 `src/irc/bus.ts`:
 
@@ -473,11 +594,20 @@ deliverBound(msg: Omit<IrcMessage, "id" | "ts">, hooks: BoundDeliveryHooks): Pro
 
 Tests (`test/task/advisory-hub.test.ts`, in-thread, fake timers): port the
 cases of `advisory-timing.test.ts` and `task-advisory-runtime.test.ts` (from
-PRs #241/#243) against `AdvisoryHub`; add that `IrcBus.send` with a binding fails
-and is not buffered; that a hub-minted reply with a stale instance is
-rejected; that the cap is checked after redaction; that
-`disposeHome("w1")` clears watches, timers (`vi.getTimerCount() === 0`),
-sources and children only for instances homed on `w1`.
+PRs #241/#243) against `AdvisoryHub`. Add:
+
+- `IrcBus.send` with a binding fails and is not buffered; a hub-minted reply
+  with a stale instance is rejected; the cap is checked after redaction.
+- **Source on every mint path.** For `wake` after terminal and for `attach` of
+  a parked child, `current(child)` returns a snapshot for the new assignment
+  id with reset counters after the next `ready` event.
+- **Park keeps no home.** Attach the child from `w1`, park it, then call
+  `detach(child, oldInstance)` and `disposeHome("w1")`. `children(parent)`
+  still shows the child as `"paused"` with frozen `wallMs`. `expireParked`
+  then empties `children(parent)`, the source map and the lineage entry.
+- **Crash disposal.** `disposeHome("w1")` clears watches, timers
+  (`vi.getTimerCount() === 0`), sources and children only for live instances
+  homed on `w1`.
 
 ### Task 3 — Home-thread wiring and consumption checks
 
@@ -531,7 +661,17 @@ Tests: port `advisory-delivery-e2e.test.ts`,
 `assignment-lineage-integration.test.ts`, `advisory-parked-snapshot.test.ts`,
 `advisory-session-real.test.ts`, `advisory-tagged-write.test.ts`,
 `irc-bridge-relay.test.ts` and the `test/tools/irc.test.ts` additions. These
-run in-thread and prove parity with #241/#243.
+run in-thread and prove parity with #241/#243, except one intended change. In
+the ported stranded-advisory case, the wake re-mint makes the record queued
+under the old assignment stale (R4). The drain or `convertToLlm` check rejects
+it, and its body never reaches the model context.
+
+New case in `assignment-lineage-integration.test.ts` (R4): a streaming parent
+gets A's bound reply queued (`outcome: "injected"`) and the parent's
+reminder queued on the child. The child's assignment goes terminal, and
+`wake` mints B with the same instances and branches. The test then drains and
+converts both queues. Neither A body appears in `convertToLlm` output or in
+any model request.
 
 ### Task 4 — `advisoryThreadService`
 
@@ -607,6 +747,16 @@ worker-homed child:
 5. `worker.terminate("worker crashed: boom")` mid-run: the child leaves
    `children()`, `remind` on its old ref returns `unavailable`, and no hub
    timer stays armed.
+6. **Terminal → wake → `agent_start`.** The worker child yields. Then a
+   parent IRC message wakes it. `children()` shows a new assignment id with
+   `wallMs` counted from the wake turn's `ready`, not from the first run.
+7. **Park → worker exit → cold revive → `agent_start`.** Park the worker
+   child through `AgentLifecycleManager.park`. Terminate its worker. The child
+   stays in `children()` as `"paused"` with unchanged `wallMs`. No hub timer
+   or subscription for that thread remains. Revive it with a follow-up
+   message (it lands on a fresh worker). `children()` shows a new assignment
+   id, phase `"running"`, and reset counters. A `release` of a parked child
+   instead empties `children()` and the hub's source and attach tables.
 
 ### Task 6 — Changelog and supersession
 
@@ -617,13 +767,15 @@ worker-homed child:
 ## Tasks
 
 - [ ] T1 Contract and pure units (`contractVersion: 1`, lineage without
-      singleton, `advisoryEventOf`, report parser, `IrcMessage` fields);
-      ported unit tests.
+      singleton, R4 `validateBinding`, `onMint`, `assignmentIdOf`,
+      `advisoryEventOf`, report parser, `IrcMessage` fields); ported unit
+      tests plus R4 and `onMint` cases.
 - [ ] T2 `AdvisoryHub` + `IrcBus.deliverBound`; `send` refuses bindings;
-      hub unit tests with fake timers.
+      `onMint`-only source creation, home-less parked state; hub unit tests
+      with fake timers.
 - [ ] T3 `AdvisoryAttachment`, facade, executor/lifecycle/messaging wiring,
       batched `validate` at every consumption point; in-thread parity tests.
 - [ ] T4 `advisoryThreadService` + `RemoteAdvisoryHub`, placed after
       `agentsThreadService`; worker bridge tests.
-- [ ] T5 Worker-mode end-to-end cases 1–5 in `executor-routing.test.ts`.
+- [ ] T5 Worker-mode end-to-end cases 1–7 in `executor-routing.test.ts`.
 - [ ] T6 Changelog; close #241 and #243.
