@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request: {}
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *"
 
 permissions: {}
 
@@ -14,7 +17,8 @@ concurrency:
 jobs:
   deploy:
     # Fork PRs do not receive secrets, so skip their Pages deployment.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    # Manual runs publish to production main only, so a branch dispatch is skipped.
+    if: (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,11 +38,18 @@ jobs:
           bun="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#bun)"
           echo "$bun/bin" >> "$GITHUB_PATH"
 
+      - name: Fetch bundled sources
+        # Before install: fetch.ts imports only node: modules, so no package code runs here.
+        run: bun run fetch
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
       - name: Build site
         run: bun run build
+
+      - name: Reference gate over published output
+        run: bun run ref-gate:dist
 
       - name: Deploy to Cloudflare Pages
         run: bun run deploy

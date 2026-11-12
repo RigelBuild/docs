@@ -9,9 +9,9 @@
         "@astrojs/starlight": "0.41.8",
         "@rigelbuild/design-ledger-gate": "2.0.1",
         "@rigelbuild/dl-claim": "1.1.1",
+        "@rigelbuild/docs-bundle": "1.2.0",
         "@rigelbuild/ref-gate": "1.0.0",
         "astro": "7.2.4",
-        "github-slugger": "2.0.0",
         "pagefind": "1.5.2",
         "sharp": "0.35.2",
         "wrangler": "4.128.0",
@@ -296,6 +296,8 @@
     "@rigelbuild/design-ledger-gate": ["@rigelbuild/design-ledger-gate@2.0.1", "", { "bin": { "design-ledger-gate": "index.ts" } }, "sha512-aEhGYrVCIYEPfIHYrIMA+X6LUK+RmfmjuN7NI0zGelBmEM0U+Cz8GfzzGGwIx2gPJCOMZl/1goW/L8D1ZKz2eA=="],
 
     "@rigelbuild/dl-claim": ["@rigelbuild/dl-claim@1.1.1", "", { "dependencies": { "@rigelbuild/design-ledger-gate": "2.0.1" }, "bin": { "dl-claim": "index.ts" } }, "sha512-/amE3EQw3dqJ4nTGKKKBpPqgmiNQxMmHaYd6jtoEyHRXOvmjelIxxVybkOCkWRTXn2Ca0JT8q8XhO3bP5g8aTA=="],
+
+    "@rigelbuild/docs-bundle": ["@rigelbuild/docs-bundle@1.2.0", "", { "dependencies": { "github-slugger": "2.0.0" }, "bin": { "docs-bundle": "cli.ts" } }, "sha512-hxDTgde5lfWi72OtdGLfZZJdK3LHuStiFwQesKIEC8fBSeaQjHFhktb13ImrIds31RaBa7AxuYW1eUiwqDXkew=="],
 
     "@rigelbuild/ref-gate": ["@rigelbuild/ref-gate@1.0.0", "", { "bin": { "ref-gate": "index.ts" } }, "sha512-ZWq24B8dYrCzC0O/QjLIFL9PhbBSjaDdJ6ZOvYyVk2IzY+icK9jDdwAgne9Ylg7UqgA2ywgUjWuBtbr7kko/tg=="],
 

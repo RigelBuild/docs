@@ -29,8 +29,16 @@ Check the returned ID before creating `docs/designs/<project>/decisions/<area>/D
 
 ## Checks and site
 
-Run `bun install`, `bun test`, `bun run gate`, `bun run ref-gate`, `rumdl check .`, `biome ci .`, and `bun run build`. The gather step reads checked-in Markdown under `docs/`, renders decision pages and per-project decision indexes into generated content, and the Astro Starlight site publishes to the Cloudflare Pages project `docs`.
+Run `bun install`, `bun test`, `bun run gate`, `bun run ref-gate`, `rumdl check .`, `biome ci .`, and `bun run fetch && bun run build`. The gather step reads checked-in Markdown under `docs/`, renders decision pages and per-project decision indexes into generated content, and the Astro Starlight site publishes to the Cloudflare Pages project `docs`.
 
 The canonical source-repository dispatch workflow is `site/dispatch/docs-dispatch.yml`.
 
 Cloudflare assigns the Pages hostname for project `docs`; the site does not configure a custom domain.
+
+## Bundled sources
+
+`site/sources.json` lists the code repos whose markdown the site bundles. `bun run fetch` clones each repo's `main` over anonymous HTTPS into `site/.bundle/`, and `bun run gather` turns their pages into site routes under `/<repo>/`. A source uses the `default` config (every gatherable markdown file) until it adds a `docs-bundle.toml`.
+
+The deploy workflow runs the fetch before dependency install. After the build, `bun run ref-gate:dist` scans `site/dist` (minus `pagefind/`) and fails the deploy on a reference hit. The build writes `_bundle.json` with each source's SHA. Set `DOCS_BUNDLE_PINS="<repo>=<sha>"` to build a pinned SHA.
+
+Each bundled source gets a sidebar group under its mount directory, and the landing page links each source.
