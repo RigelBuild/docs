@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { execFile } from "node:child_process";
 import {
 	mkdir,
@@ -37,6 +37,16 @@ describe("source fetch command construction", () => {
 			"https://github.com/RigelBuild/meissa.git",
 			"/tmp/source",
 		]);
+	});
+
+	test("joins a base URL without a trailing slash", () => {
+		const args = buildCloneArgs(
+			"RigelBuild/meissa",
+			"/tmp/source",
+			undefined,
+			"https://github.com",
+		);
+		expect(args).toContain("https://github.com/RigelBuild/meissa.git");
 	});
 
 	test("keeps blob filtering and drops clone depth for a pinned source", () => {
@@ -152,7 +162,8 @@ async function makeRemote(): Promise<Remote> {
 	await mkdir(join(base, "RigelBuild"), { recursive: true });
 	await git(["init", "--quiet", "--bare", bare], base);
 	await git(["symbolic-ref", "HEAD", "refs/heads/main"], bare);
-	// Without this the server drops --filter and the blob:none path is untested.
+	// Without this the server drops --filter. The blob:none path is exercised
+	// here, not verified: nothing checks that blobs were actually skipped.
 	await git(["config", "uploadpack.allowFilter", "true"], bare);
 
 	await git(["init", "--quiet", scratch], base);
@@ -160,6 +171,10 @@ async function makeRemote(): Promise<Remote> {
 	await git(["remote", "add", "origin", bare], scratch);
 	await writeFile(join(scratch, "README.md"), "# one\n");
 	await writeFile(join(scratch, "docs-bundle.toml"), 'name = "tool"\n');
+	await mkdir(join(scratch, "docs"), { recursive: true });
+	await writeFile(join(scratch, "docs", "x.md"), "# docs\n");
+	await mkdir(join(scratch, "src"), { recursive: true });
+	await writeFile(join(scratch, "src", "main.ts"), "export {};\n");
 	await commitAll(scratch, "first");
 	const first = await git(["rev-parse", "HEAD"], scratch);
 	await writeFile(join(scratch, "README.md"), "# two\n");
@@ -170,7 +185,7 @@ async function makeRemote(): Promise<Remote> {
 	await commitAll(scratch, "side");
 	const side = await git(["rev-parse", "HEAD"], scratch);
 	await git(["push", "--quiet", "origin", "main", "side"], scratch);
-	// Trailing slash: fetch.ts appends `${repo}.git` directly to baseUrl.
+	// Trailing slash, as in GITHUB_BASE_URL. buildCloneArgs also accepts none.
 	return { baseUrl: `${pathToFileURL(base).href}/`, first, second, side };
 }
 
@@ -194,6 +209,9 @@ async function fetchTool(
 async function readFetched(workDir: string): Promise<unknown> {
 	return JSON.parse(await readFile(join(workDir, "fetched.json"), "utf8"));
 }
+
+// The bare-repo tests clone for real; a loaded gate host can exceed Bun's 5 s default.
+setDefaultTimeout(30_000);
 
 describe("source fetch against a local bare repo", () => {
 	test("checks out the pinned SHA instead of the branch head", async () => {
@@ -222,10 +240,10 @@ describe("source fetch against a local bare repo", () => {
 			expect.objectContaining({ sha: remote.first }),
 		]);
 
-		// runGit labels failures with args[0], which is "-C" for this call.
+		// runGit labels failures with the git subcommand: merge-base here.
 		await expect(
 			fetchTool(remote, new Map([[REPO, remote.side]]), true),
-		).rejects.toThrow("git -C failed (1)");
+		).rejects.toThrow("git merge-base failed (1)");
 
 		// Control: the same side-branch SHA is accepted when production is off.
 		const dev = await fetchTool(remote, new Map([[REPO, remote.side]]), false);
@@ -239,6 +257,10 @@ describe("source fetch against a local bare repo", () => {
 		const workDir = await fetchTool(remote, new Map<string, string>(), false);
 		const root = join(workDir, "sources", "tool");
 		expect(await readFile(join(root, "README.md"), "utf8")).toBe("# two\n");
+		expect(await readFile(join(root, "docs", "x.md"), "utf8")).toBe("# docs\n");
+		await expect(stat(join(root, "src", "main.ts"))).rejects.toMatchObject({
+			code: "ENOENT",
+		});
 		await expect(stat(join(root, ".git"))).rejects.toMatchObject({
 			code: "ENOENT",
 		});

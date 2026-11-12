@@ -1,5 +1,10 @@
 [
 	{
+		"repo": "RigelBuild/meissa",
+		"mount": "/meissa/",
+		"config": "default"
+	},
+	{
 		"repo": "RigelBuild/terraform-provider-googleworkspace",
 		"mount": "/terraform-provider-googleworkspace/",
 		"config": "default"
