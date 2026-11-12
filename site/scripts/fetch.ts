@@ -18,9 +18,12 @@ interface FetchOptions {
 	workDir: string;
 	pins: ReadonlyMap<string, string>;
 	production: boolean;
+	/** Clone URL prefix ending in "/". Defaults to GitHub. */
+	baseUrl?: string;
 }
 
 const REPO_PATTERN = /^RigelBuild\/[A-Za-z0-9_-][A-Za-z0-9_.-]*$/;
+const GITHUB_BASE_URL = "https://github.com/";
 
 const IMAGE_EXTENSIONS = [
 	"png",
@@ -70,6 +73,7 @@ export function buildCloneArgs(
 	repo: string,
 	destination: string,
 	pin?: string,
+	baseUrl = GITHUB_BASE_URL,
 ): string[] {
 	const args = [
 		"-c",
@@ -81,7 +85,7 @@ export function buildCloneArgs(
 		"--sparse",
 	];
 	if (pin === undefined) args.push("--depth", "1");
-	args.push(`https://github.com/${repo}.git`, destination);
+	args.push(`${baseUrl}${repo}.git`, destination);
 	return args;
 }
 
@@ -143,12 +147,13 @@ async function fetchSource(
 	workDir: string,
 	pin: string | undefined,
 	production: boolean,
+	baseUrl: string,
 	env: NodeJS.ProcessEnv,
 ): Promise<FetchedSource> {
 	const root = join(workDir, "sources", basename(source.repo));
 	await rm(root, { recursive: true, force: true });
 	await mkdir(join(workDir, "sources"), { recursive: true });
-	await runGit(buildCloneArgs(source.repo, root, pin), workDir, env);
+	await runGit(buildCloneArgs(source.repo, root, pin, baseUrl), workDir, env);
 	await runGit(
 		["-C", root, "sparse-checkout", "set", "--no-cone", ...sparsePatterns()],
 		workDir,
@@ -198,6 +203,7 @@ export async function fetchSources(options: FetchOptions): Promise<void> {
 	const fetchedPath = join(options.workDir, "fetched.json");
 	await rm(fetchedPath, { force: true });
 	const env = buildGitEnvironment();
+	const baseUrl = options.baseUrl ?? GITHUB_BASE_URL;
 	for (const repo of options.pins.keys()) {
 		if (!options.sources.some((source) => source.repo === repo))
 			throw new Error(`pin does not match a configured source: ${repo}`);
@@ -210,6 +216,7 @@ export async function fetchSources(options: FetchOptions): Promise<void> {
 				options.workDir,
 				options.pins.get(source.repo),
 				options.production,
+				baseUrl,
 				env,
 			),
 		);
