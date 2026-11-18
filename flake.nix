@@ -24,6 +24,7 @@
         in {
           inherit (meissaPackages) rumdl biome;
           "rumdl-base-config" = meissaPackages."rumdl-base-config";
+          hk = import ./tools/toolchain/hk.nix { inherit pkgs; };
           bun = pkgs.bun;
         });
       devenvModules.default = meissa.devenvModules.default;
