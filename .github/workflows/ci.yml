@@ -60,5 +60,11 @@ jobs:
       - name: Public reference gate
         run: bun run ref-gate
 
+      - name: Fetch bundled sources
+        run: bun run fetch
+
       - name: Build site
         run: bun run build
+
+      - name: Reference gate over published output
+        run: bun run ref-gate:dist
