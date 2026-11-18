@@ -18,7 +18,7 @@
 		"@astrojs/check": "0.9.10",
 		"@astrojs/starlight": "0.41.8",
 		"@rigelbuild/design-ledger-gate": "2.0.1",
-		"@rigelbuild/docs-bundle": "1.2.0",
+		"@rigelbuild/docs-bundle": "1.2.1",
 		"@rigelbuild/dl-claim": "1.1.1",
 		"@rigelbuild/ref-gate": "1.0.0",
 		"astro": "7.2.4",
