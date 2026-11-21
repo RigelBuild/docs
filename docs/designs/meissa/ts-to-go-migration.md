@@ -881,6 +881,13 @@ func Main(ctx context.Context, args []string, env func(string) string, stdout, s
 `--glob` uses `doublestar.Match`. `--grep` stays a case-insensitive substring
 match, lowercased with `jstext.ToLower`.
 
+**Erratum (RIG-8124 to RIG-8127, meissa#74).** The merged Go differs from the
+interface blocks above in three ways. The packages are `ledgergate/core`,
+`ledgergate/run` and `ledgergate/claim`, not one `ledgergate` package. The
+runner is `run.Once`, not `RunOnce`. `Deps` gains `BaseRef() string`, as in TS.
+The M7 claim client is `claim.NewClaimClient`, and `claim.CheckIDs` replaces
+`ClaimCheckIDs`. Error and diagnostic text is unchanged from TS.
+
 ### M9: `length-gate` comment ratchet
 
 Port `config.ts` and the comment half of `core.ts` to `go/internal/lengthgate`,
@@ -1162,12 +1169,12 @@ the meissa `README.md` install section to the flake `tools` package and
 - [x] M1b `commentscan` scanners part 1 (scan, languages, comment blocks, routing)
 - [ ] M2 `commentscan` Markdown, TSX and Astro; release-please `go` package; first `go/v*` tag
 - [x] M3 flake `tools` package and `ref-gate`
-- [ ] M4 Renovate hash refresh in Go, `gomod` manager, Renovate config test
-- [ ] M5 `ledger` public package
-- [ ] M6a `design-ledger-gate` pure core
-- [ ] M6b `design-ledger-gate` runner and validation legs
-- [ ] M7 `design-ledger-gate` claim check and CLI in `tools`
-- [ ] M8 `dl-claim`, `dl-list`, `dl-reconcile` in `tools`
+- [x] M4 Renovate hash refresh in Go, `gomod` manager, Renovate config test
+- [x] M5 `ledger` public package
+- [x] M6a `design-ledger-gate` pure core
+- [x] M6b `design-ledger-gate` runner and validation legs
+- [x] M7 `design-ledger-gate` claim check and CLI in `tools`
+- [x] M8 `dl-claim`, `dl-list`, `dl-reconcile` in `tools`
 - [ ] M9 `length-gate` comment ratchet
 - [ ] M10 `length-gate` document ratchet
 - [ ] M11 `length-gate` git, runner and CLI in `tools`
