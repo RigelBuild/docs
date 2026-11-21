@@ -1,5 +1,7 @@
 # meissa: TypeScript to Go migration
 
+Errata: E1 (2026-11-21) — see §Errata
+
 Linear: RIG-5901. Matt's ruling B (2026-10-19): every non-frontend TypeScript
 surface ports to Go now, not on touch. Ruling of 2026-11-01: the old product is
 archived and tabit is deleted, so neither is a consumer this record waits on. Matt ruled
@@ -1162,12 +1164,12 @@ the meissa `README.md` install section to the flake `tools` package and
 - [x] M1b `commentscan` scanners part 1 (scan, languages, comment blocks, routing)
 - [ ] M2 `commentscan` Markdown, TSX and Astro; release-please `go` package; first `go/v*` tag
 - [x] M3 flake `tools` package and `ref-gate`
-- [ ] M4 Renovate hash refresh in Go, `gomod` manager, Renovate config test
-- [ ] M5 `ledger` public package
-- [ ] M6a `design-ledger-gate` pure core
-- [ ] M6b `design-ledger-gate` runner and validation legs
-- [ ] M7 `design-ledger-gate` claim check and CLI in `tools`
-- [ ] M8 `dl-claim`, `dl-list`, `dl-reconcile` in `tools`
+- [x] M4 Renovate hash refresh in Go, `gomod` manager, Renovate config test
+- [x] M5 `ledger` public package
+- [x] M6a `design-ledger-gate` pure core
+- [x] M6b `design-ledger-gate` runner and validation legs
+- [x] M7 `design-ledger-gate` claim check and CLI in `tools`
+- [x] M8 `dl-claim`, `dl-list`, `dl-reconcile` in `tools`
 - [ ] M9 `length-gate` comment ratchet
 - [ ] M10 `length-gate` document ratchet
 - [ ] M11 `length-gate` git, runner and CLI in `tools`
@@ -1176,3 +1178,14 @@ the meissa `README.md` install section to the flake `tools` package and
 - [ ] M14 npm publish tool in Go; Bun leaves meissa
 - [ ] M15 RigelBuild/docs cutover
 - [ ] M16 npm deprecation
+
+## Errata
+
+### E1 — 2026-11-21 (RIG-8124)
+
+Stale: "`RunOnce` treats `Legs.ClaimCheck`" (M6b), and the M6b to M8 names. The merged Go at meissa#74 (`aacea5c2`) differs in these ways.
+
+- The packages are `ledgergate/core`, `ledgergate/run` and `ledgergate/claim`, not one `ledgergate` package. `LoadConfig` and `ClassifyDesignPath` are in `core`. `ReadDLClaimToken` is in `claim`.
+- The runner is `run.Once`, not `RunOnce`. `Deps` gains `BaseRef() string`, as in TS.
+- `ClaimVerdict`, `ClaimServiceError`, `ClaimFetch` and `ClaimCheckIDs` are `claim.Verdict`, `claim.ServiceError`, `claim.Fetch` and `claim.CheckIDs`. `claim.NewClaimClient` returns `claim.Fetch`.
+- Error and diagnostic text matches TS, except JSON syntax errors, which come from `encoding/json`. That covers `LoadConfig` and the claim client's `malformed response body`.
