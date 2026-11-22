@@ -610,6 +610,8 @@ func Main(ctx context.Context, args []string, env func(string) string, stdout, s
 
 Error text keeps the `renovate-go-analysis:` prefix and the TS messages.
 
+Parity (RIG-8122): TS 17 cases (refresher 8, config 9) map to Go 17 (`renovatehashes` 8 refresher names; `repochecks` 9 config names, incl. `TestRenovatePolicyScheduledWorkflow`).
+
 ### M5: `ledger` public package
 
 Port `decision-files.ts` to `go/ledger` with `decision-files.test.ts`. Capture
@@ -1172,7 +1174,7 @@ the meissa `README.md` install section to the flake `tools` package and
 - [ ] M10 `length-gate` document ratchet
 - [ ] M11 `length-gate` git, runner and CLI in `tools`
 - [ ] M12 retire `renovate-preflight`
-- [ ] M13 root checks in Go
+- [x] M13 root checks in Go
 - [ ] M14 npm publish tool in Go; Bun leaves meissa
 - [ ] M15 RigelBuild/docs cutover
 - [ ] M16 npm deprecation
