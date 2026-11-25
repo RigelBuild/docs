@@ -23,7 +23,7 @@ hooks {
             }
             ["ref-gate"] = new Step {
                 depends = "biome"
-                check = "bun run ref-gate"
+                check = "ref-gate --config ref-gate.config.json"
             }
             ["build"] = new Step {
                 depends = "ref-gate"
