@@ -37,7 +37,7 @@
 	"carveOutPaths": [
 		"ref-gate.config.json",
 		"bun.lock",
-		"site/scripts/ref-gate-config.test.ts"
+		"site/gather/ref_gate_config_test.go"
 	],
 	"carveOutPrefixes": [],
 	"allowlist": {},

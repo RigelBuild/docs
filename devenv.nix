@@ -5,6 +5,7 @@ let
 in
 {
   imports = [ flake.devenvModules.default ];
-  packages = [ pkgs.bun packages.hk ];
+  packages = [ pkgs.bun packages.hk packages.tools packages.go-dev ];
   env.HK_STATE_DIR = "${config.devenv.state}/hk";
+  env.REF_GATE_BIN = "${packages.tools}/bin/ref-gate";
 }

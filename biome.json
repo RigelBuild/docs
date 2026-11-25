@@ -1,5 +1,8 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.6.5/schema.json",
 	"root": true,
-	"extends": ["@rigelbuild/biome-config/biome"]
+	"extends": ["@rigelbuild/biome-config/biome"],
+	"files": {
+		"includes": ["**", "!**/*.md", "!site/gather/internal/slug/gen/regex.js"]
+	}
 }

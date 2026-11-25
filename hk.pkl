@@ -11,7 +11,7 @@ hooks {
             }
             ["test"] = new Step {
                 depends = "install"
-                check = "bun test"
+                check = "bun test && go -C site/gather test -race ./..."
             }
             ["markdown"] = new Step {
                 depends = "test"
@@ -23,7 +23,7 @@ hooks {
             }
             ["ref-gate"] = new Step {
                 depends = "biome"
-                check = "bun run ref-gate"
+                check = "ref-gate --config ref-gate.config.json"
             }
             ["build"] = new Step {
                 depends = "ref-gate"

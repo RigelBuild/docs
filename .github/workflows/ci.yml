@@ -32,6 +32,14 @@ jobs:
           echo "$biome/bin" >> "$GITHUB_PATH"
           echo "RUMDL_BASE_CONFIG=$base_config/rumdl/base.toml" >> "$GITHUB_ENV"
 
+      - name: Build meissa tools and Go toolchain
+        run: |
+          tools="$(nix build --no-link --print-out-paths .#tools)"
+          go_dev="$(nix build --no-link --print-out-paths .#go-dev)"
+          echo "$tools/bin" >> "$GITHUB_PATH"
+          echo "$go_dev/bin" >> "$GITHUB_PATH"
+          echo "REF_GATE_BIN=$tools/bin/ref-gate" >> "$GITHUB_ENV"
+
       - name: Build Bun from the pinned nixpkgs
         run: |
           bun="$(nix build --no-link --print-out-paths --inputs-from . nixpkgs#bun)"
@@ -41,7 +49,9 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Test
-        run: bun test
+        run: |
+          bun test
+          go -C site/gather test -race ./...
 
       - name: Markdown lint
         run: rumdl check .
@@ -50,7 +60,7 @@ jobs:
         run: biome ci .
 
       - name: Design ledger gate
-        run: bun run gate
+        run: design-ledger-gate --config design-ledger.config.json
         # The gate reads the PR body, branch, and files through gh on pull_request.
         env:
           GH_TOKEN: ${{ github.token }}
@@ -58,7 +68,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
 
       - name: Public reference gate
-        run: bun run ref-gate
+        run: ref-gate --config ref-gate.config.json
 
       - name: Fetch bundled sources
         run: bun run fetch

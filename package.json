@@ -3,13 +3,12 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"gather": "bun site/scripts/gather.ts",
 		"fetch": "bun site/scripts/fetch.ts",
+		"gather": "go -C site/gather run .",
 		"test": "bun test",
 		"build": "bun run gather && astro build --root site",
 		"check": "astro check --root site",
 		"gate": "design-ledger-gate --config design-ledger.config.json",
-		"ref-gate": "ref-gate --config ref-gate.config.json",
 		"ref-gate:dist": "bun site/scripts/ref-gate-dist.ts",
 		"claim": "dl-claim --config design-ledger.claim.config.json",
 		"deploy": "bun site/scripts/deploy.ts"
@@ -17,9 +16,6 @@
 	"dependencies": {
 		"@astrojs/check": "0.9.10",
 		"@astrojs/starlight": "0.41.8",
-		"@rigelbuild/design-ledger-gate": "2.0.1",
-		"@rigelbuild/docs-bundle": "1.2.1",
-		"@rigelbuild/dl-claim": "1.1.1",
 		"@rigelbuild/ref-gate": "1.0.0",
 		"astro": "7.2.4",
 		"pagefind": "1.5.2",

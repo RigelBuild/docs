@@ -29,7 +29,7 @@ Check the returned ID before creating `docs/designs/<project>/decisions/<area>/D
 
 ## Checks and site
 
-Run `bun install`, `bun test`, `bun run gate`, `bun run ref-gate`, `rumdl check .`, `biome ci .`, and `bun run fetch && bun run build`. The gather step reads checked-in Markdown under `docs/`, renders decision pages and per-project decision indexes into generated content, and the Astro Starlight site publishes to the Cloudflare Pages project `docs`.
+Run `bun install`, `bun test`, `go -C site/gather test ./...`, `bun run gate`, `ref-gate --config ref-gate.config.json`, `rumdl check .`, `biome ci .`, and `bun run fetch && bun run build`. The gather step reads checked-in Markdown under `docs/`, renders decision pages and per-project decision indexes into generated content, and the Astro Starlight site publishes to the Cloudflare Pages project `docs`.
 
 The canonical source-repository dispatch workflow is `site/dispatch/docs-dispatch.yml`.
 
